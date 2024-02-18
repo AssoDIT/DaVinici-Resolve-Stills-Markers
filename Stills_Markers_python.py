@@ -345,6 +345,7 @@ def resize_image(input_path, percentage, delete_original):
     :param percentage: Percentage of the original size.
     :param delete_original: If True, the original image will be deleted after resizing.
     """
+    # todo repair the function to work with the delete original option
     if percentage > 1 and percentage < 100:
 
         with Image.open(input_path) as img:
@@ -362,14 +363,28 @@ def resize_image(input_path, percentage, delete_original):
     else:
         print("bypass downsizing, percentage must be between 1 and 100.")
 
+def get_all_mediapool_bins(parent_bin):
+    """
+    Recursively gets all the bins in the mediapool
+    :param parent_bin: davinci bin object
+    :return: list of all the dvr object bins in mediapool project, problem is it returns multiple times the same bin
+    """
+    bins_list = [bin for bin in parent_bin.GetSubFolderList()]
+    for sub_bin in bins_list:
+        bins_list.extend(get_all_mediapool_bins(sub_bin))
+    return bins_list
 
-def find_in_out_points_of_timeline_in_folder(folder, timeline):
+def find_in_out_points_of_timeline_in_folder(root_folder, timeline):
     # doesn't return if it wont find the timeline or the in and out points
-    for item in folder.GetClipList():
-        if item.GetClipProperty()['Type'] == 'Timeline' and item.GetName() == timeline.GetName():
-            markIn = item.GetClipProperty("In") or item.GetClipProperty("Start TC")
-            markOut = item.GetClipProperty("Out") or item.GetClipProperty("End TC")
-            return markIn, markOut
+    bins_list = get_all_mediapool_bins(root_folder)
+
+    for bin in bins_list:
+        # print(f"bin --- {bin.GetName()}")
+        for item in bin.GetClipList():
+            if item.GetClipProperty()['Type'] == 'Timeline' and item.GetName() == timeline.GetName():
+                markIn = item.GetClipProperty("In") or item.GetClipProperty("Start TC")
+                markOut = item.GetClipProperty("Out") or item.GetClipProperty("End TC")
+                return markIn, markOut
     return "", ""
 
 
@@ -383,13 +398,13 @@ def detect_in_out_point_timeline(project, timeline):
     # search for timeline in root folder
     root_folder = project.GetMediaPool().GetRootFolder()
     markIn, markOut = find_in_out_points_of_timeline_in_folder(root_folder, timeline)
-    if markIn == "" and markOut == "":
-        # search for timeline in sub folders
-        for sub_folder in root_folder.GetSubFolderList():
-            markIn, markOut = find_in_out_points_of_timeline_in_folder(sub_folder, timeline)
-            if markIn == "" and markOut == "":
-                print(f"didn't find timeline {timeline.GetName()} in project")
-
+    # this part is useless with the function get_all_mediapool_bins
+    # if markIn == "" and markOut == "":
+    #     # search for timeline in sub folders
+    #     for sub_folder in root_folder.GetSubFolderList():
+    #         markIn, markOut = find_in_out_points_of_timeline_in_folder(sub_folder, timeline)
+    #         if markIn == "" and markOut == "":
+    #             print(f"didn't find timeline {timeline.GetName()} in project")
     print(f"markin {markIn} - markout {markOut}")
     return markIn, markOut
 
