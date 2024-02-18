@@ -71,14 +71,14 @@ import os
 import subprocess
 import sys
 import json
-import pip
+
 
 try:
     from PIL import Image, ImageDraw, ImageFont
     print("Pillow is already installed.")
 except ImportError:
     print("Pillow not found. Installing...")
-    pip.main(['install', 'Pillow'])
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'Pillow'])
 
     try:
         from PIL import Image, ImageDraw, ImageFont
