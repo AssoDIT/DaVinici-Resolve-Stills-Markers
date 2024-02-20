@@ -337,7 +337,7 @@ def create_new_filename(clip):
         return clip.GetName().split('.')[0] + "_"
 
 
-def resize_image(input_path, percentage, delete_original):
+def resize_image(input_path, percentage, delete_original, original_size=None):
     """
     Resizes the image to the specified size and optionally deletes the original image.
 
@@ -345,7 +345,7 @@ def resize_image(input_path, percentage, delete_original):
     :param percentage: Percentage of the original size.
     :param delete_original: If True, the original image will be deleted after resizing.
     """
-    # todo repair the function to work with the delete original option
+    # todo make the delete original work for resized > 100%
     if percentage > 1 and percentage < 100:
 
         with Image.open(input_path) as img:
@@ -357,11 +357,22 @@ def resize_image(input_path, percentage, delete_original):
             if delete_original:
                 resized_img.save(input_path)
             else:
+                # print("entering the else statement for delete original")
                 input_path_split, extension = os.path.splitext(input_path)
                 output_path = f"{input_path_split}_resized{extension}"
                 resized_img.save(output_path)
+                # print(f"output path {output_path} - input path {input_path}")
     else:
         print("bypass downsizing, percentage must be between 1 and 100.")
+        if original_size and not delete_original:
+            # print(f"original size {original_size}")
+            with Image.open(input_path) as img:
+                resized_img = img.resize((original_size[0], original_size[1]), Image.LANCZOS)
+                input_path_split, extension = os.path.splitext(input_path)
+                output_path = f"{input_path_split}_original_size{extension}"
+                resized_img.save(output_path)
+                # print(f"output path {output_path} - input path {input_path}")
+
 
 def get_all_mediapool_bins(parent_bin):
     """
@@ -405,7 +416,7 @@ def detect_in_out_point_timeline(project, timeline):
     #         markIn, markOut = find_in_out_points_of_timeline_in_folder(sub_folder, timeline)
     #         if markIn == "" and markOut == "":
     #             print(f"didn't find timeline {timeline.GetName()} in project")
-    print(f"markin {markIn} - markout {markOut}")
+    # print(f"markin {markIn} - markout {markOut}")
     return markIn, markOut
 
 
@@ -416,7 +427,7 @@ def get_marker_count_by_color(markers):
             marker_count_by_color[marker["color"]] = 0
         marker_count_by_color[marker["color"]] += 1
         marker_count_by_color["Any"] += 1
-        print(f"function output {marker_count_by_color}")
+        # print(f"function output {marker_count_by_color}")
     return marker_count_by_color
 
 def get_timeline_project_resolution(project, timeline):
@@ -438,7 +449,7 @@ def timeline_resolution_override(project, timeline, resolution_tuple, resolution
     res_timeline_height = res_t_height * (int(resolution_percentage)/100)
     res_project_width = res_p_width * (int(resolution_percentage)/100)
     res_project_height = res_p_height * (int(resolution_percentage)/100)
-    print(f"res_timeline_width {res_timeline_width} res_timeline_height {res_timeline_height} res_project_width {res_project_width} res_project_height {res_project_height}")
+    # print(f"res_timeline_width {res_timeline_width} res_timeline_height {res_timeline_height} res_project_width {res_project_width} res_project_height {res_project_height}")
     return (timeline.SetSetting('timelineResolutionWidth', str(int(res_timeline_width))),
             timeline.SetSetting('timelineResolutionHeight', str(int(res_timeline_height))),
             project.SetSetting('timelineResolutionWidth', str(int(res_project_width))),
@@ -485,7 +496,7 @@ dict_settings = {"markers": "Any",
 
 
 settings = load_settings_from_json(dict_settings)
-print(settings)
+# print(settings)
 ui = fusion.UIManager
 dispatcher = bmd.UIDispatcher(ui)
 
@@ -971,7 +982,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                 else window_items[marker_combo_boxID].CurrentText.lower() + " "
             window_items[info_labelID].Text = f"No {marker_color}markers found, no stills will be grabbed"
             start_button_enabled = False
-        print(window_items[info_labelID].Text)
+        # print(window_items[info_labelID].Text)
 
         window_items[start_buttonID].Enabled = start_button_enabled
         window_items[export_to_line_editID].ToolTip = window_items[export_to_line_editID].Text
@@ -1038,7 +1049,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     def OnFormatComboBoxCurrentIndexChanged(ev):
         settings["format"] = stills["formats"]["sort_order"][window_items[format_combo_boxID].CurrentIndex]
-        print(settings["format"])
+        # print(settings["format"])
         update_controls()
 
     def OnBrowseButtonClicked(ev):
@@ -1075,7 +1086,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
 
     def OnWindowKeyPress(ev):
-        print(ev["Key"])
+        # print(ev["Key"])
         # Add your logic for key press events
         if ev["Key"] == 16777220:
             OnStartButtonClicked(ev)
@@ -1152,7 +1163,7 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
         marker_offset_frame = timeline_start + marker_frame
         # print(f"marker offset frame {marker_offset_frame} - markin frame {markIn_frame} - markout frame {markOut_frame}")
         if marker_offset_frame < markIn_frame or marker_offset_frame > markOut_frame:
-            print("delete marker")
+            # print("delete marker")
             marker_to_delete.append(marker_frame)
     for marker_frame in marker_to_delete:
         del markers_in_out[marker_frame]
@@ -1170,7 +1181,7 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
         stills_to_export = []
         # Create a list to contain ordered marker frames
         # print(f"find markers {len(marker_frames)}")
-        print(f'resize percentage {settings["resize_percentage"]}')
+        # print(f'resize percentage {settings["resize_percentage"]}')
         if settings["resize_stills"] and int(settings["resize_percentage"]) > 100 and settings["export"]:
             tres, tres2, pres, pres2 = timeline_resolution_override(project, timeline, resolution_tuple, settings["resize_percentage"])
             print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
@@ -1223,6 +1234,9 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
                     resize_image(image, int(settings["resize_percentage"]), settings["replace_original_exports"])
                 if int(settings["resize_percentage"]) > 100:
                     tres, tres2, pres, pres2 = timeline_resolution_override(project, timeline, resolution_tuple, 100)
+                    for image in images:
+                        # use a dummy resize percentage at 100 to bypass downsizing
+                        resize_image(image, 100, settings["replace_original_exports"], original_size=resolution_tuple[:2])
 
             # remove drx files
             if settings["remove_drx"]:
