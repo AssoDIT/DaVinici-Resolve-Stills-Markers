@@ -345,7 +345,6 @@ def resize_image(input_path, percentage, delete_original, original_size=None):
     :param percentage: Percentage of the original size.
     :param delete_original: If True, the original image will be deleted after resizing.
     """
-    # todo make the delete original work for resized > 100%
     if percentage > 1 and percentage < 100:
 
         with Image.open(input_path) as img:
