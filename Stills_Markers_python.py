@@ -333,7 +333,7 @@ def create_new_filename(clip):
                 else:
                     return "{}_".format(scene)
     else:
-        print("No scene found returning clip name")
+        # print("No scene found returning clip name")
         return clip.GetName().split('.')[0] + "_"
 
 
@@ -362,7 +362,6 @@ def resize_image(input_path, percentage, delete_original, original_size=None):
                 resized_img.save(output_path)
                 # print(f"output path {output_path} - input path {input_path}")
     else:
-        print("bypass downsizing, percentage must be between 1 and 100.")
         if original_size and not delete_original:
             # print(f"original size {original_size}")
             with Image.open(input_path) as img:
@@ -371,6 +370,8 @@ def resize_image(input_path, percentage, delete_original, original_size=None):
                 output_path = f"{input_path_split}_original_size{extension}"
                 resized_img.save(output_path)
                 # print(f"output path {output_path} - input path {input_path}")
+        else:
+            print("bypass downsizing, percentage must be between 1 and 100.")
 
 
 def get_all_mediapool_bins(parent_bin):
@@ -385,8 +386,9 @@ def get_all_mediapool_bins(parent_bin):
     return bins_list
 
 def find_in_out_points_of_timeline_in_folder(root_folder, timeline):
-    # doesn't return if it wont find the timeline or the in and out points
+    # doesn't return if it won't find the timeline or the in and out points
     bins_list = get_all_mediapool_bins(root_folder)
+    bins_list.extend([root_folder])
 
     for bin in bins_list:
         # print(f"bin --- {bin.GetName()}")
@@ -408,14 +410,7 @@ def detect_in_out_point_timeline(project, timeline):
     # search for timeline in root folder
     root_folder = project.GetMediaPool().GetRootFolder()
     markIn, markOut = find_in_out_points_of_timeline_in_folder(root_folder, timeline)
-    # this part is useless with the function get_all_mediapool_bins
-    # if markIn == "" and markOut == "":
-    #     # search for timeline in sub folders
-    #     for sub_folder in root_folder.GetSubFolderList():
-    #         markIn, markOut = find_in_out_points_of_timeline_in_folder(sub_folder, timeline)
-    #         if markIn == "" and markOut == "":
-    #             print(f"didn't find timeline {timeline.GetName()} in project")
-    # print(f"markin {markIn} - markout {markOut}")
+    print(f"found in {timeline} - markin {markIn} - markout {markOut}")
     return markIn, markOut
 
 
@@ -956,7 +951,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     window_items = main_window.GetItems()
 
     def update_controls():
-        print('entering updates')
+        # print('entering updates')
         marker_count_by_color = markers_dict["get_marker_count_by_color"](
             markers if not settings["restrict_to_in_out"] else markers_in_out)
         start_button_enabled = not window_items[export_check_boxID].Checked or \
@@ -1162,7 +1157,7 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
         marker_offset_frame = timeline_start + marker_frame
         # print(f"marker offset frame {marker_offset_frame} - markin frame {markIn_frame} - markout frame {markOut_frame}")
         if marker_offset_frame < markIn_frame or marker_offset_frame > markOut_frame:
-            # print("delete marker")
+            print(f"delete {len(marker_frame)} marker outside of in out points")
             marker_to_delete.append(marker_frame)
     for marker_frame in marker_to_delete:
         del markers_in_out[marker_frame]
@@ -1179,8 +1174,7 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
         initial_state = change_page("color")
         stills_to_export = []
         # Create a list to contain ordered marker frames
-        # print(f"find markers {len(marker_frames)}")
-        # print(f'resize percentage {settings["resize_percentage"]}')
+        print(f"found {len(marker_frames)} markers")
         if settings["resize_stills"] and int(settings["resize_percentage"]) > 100 and settings["export"]:
             tres, tres2, pres, pres2 = timeline_resolution_override(project, timeline, resolution_tuple, settings["resize_percentage"])
             print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
