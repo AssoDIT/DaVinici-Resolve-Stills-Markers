@@ -1142,10 +1142,7 @@ timeline_settings = {
     "markIn_frame": markIn_frame,
     "markOut_frame": markOut_frame
 }
-
 markers = timeline.GetMarkers()
-
-
 # launch the script if it finds markers
 if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
     marker_frames = sorted(markers.keys())
@@ -1157,8 +1154,9 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
         marker_offset_frame = timeline_start + marker_frame
         # print(f"marker offset frame {marker_offset_frame} - markin frame {markIn_frame} - markout frame {markOut_frame}")
         if marker_offset_frame < markIn_frame or marker_offset_frame > markOut_frame:
-            print(f"delete {len(marker_frame)} marker outside of in out points")
             marker_to_delete.append(marker_frame)
+    # delete markers outside of in and out points
+    print(f"delete {len(marker_to_delete)} marker outside of in out points")
     for marker_frame in marker_to_delete:
         del markers_in_out[marker_frame]
     # launching the ui
