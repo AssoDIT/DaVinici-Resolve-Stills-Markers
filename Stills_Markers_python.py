@@ -1236,8 +1236,9 @@ if markers:  # Equivalent to `if next(markers) ~= nil` in Lua
             else:
                 output_path = settings["export_to"]
             reselect_album(still_album, gallery)
-            assert still_album.ExportStills(stills_to_export, output_path, prefix,
-                                            settings["format"]), "An error occurred while exporting stills"
+            assert still_album.ExportStills(stills_to_export, output_path, prefix, settings["format"]), \
+                f"An error occurred while exporting stills with \n output path {output_path} \n prefix {prefix} " \
+                f"\n format {settings['format']} \n and stills to export {stills_to_export}"
 
             # resize stills
             if settings["resize_stills"]:
