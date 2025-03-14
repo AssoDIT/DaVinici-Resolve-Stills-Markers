@@ -194,31 +194,53 @@ def detect_system_and_image_optim_installed(app_name = "ImageOptim"):
         return False
 
 
-def load_settings_from_json(settings: dict):
+def load_settings_from_json(settings: dict,
+                            setting_sub_folder_name: str = "Stills_Marker_python_settings",
+                            setting_file_name: str = "settings.json"):
+
+    # return the folder from where the script is running
+    script_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+    setting_path_folder = os.path.join(script_path, setting_sub_folder_name)
+    if not os.path.exists(setting_path_folder):
+        os.mkdir(setting_path_folder)
+
+    setting_path = os.path.join(setting_path_folder, setting_file_name)
+
+    # print("script path {}".format(script_path))
+
     try:
-        with open(os.path.join(os.getcwd(), "settings.json")) as j:
+        with open(setting_path) as j:
             json_settings = json.load(j)
-        print("loaded settings from {}".format(os.path.join(os.getcwd(), "settings.json")))
+        print(f"loaded settings from {setting_path}")
         if set(json_settings.keys()) == set(settings.keys()):
             return json_settings
         else:
             print("settings.json file is not valid")
-            with open(os.path.join(os.getcwd(), "settings.json"), "w") as j:
+            with open(setting_path, "w") as j:
                 json.dump(settings, j)
-            print("created a setting.json file at {}".format(os.getcwd()))
+            print(f"created a {setting_path} setting file")
             return settings
     except:
         print("cannot find setting file")
-        with open(os.path.join(os.getcwd(), "settings.json"), "w") as j:
+        with open(setting_path, "w") as j:
             json.dump(settings, j)
-        print("created a setting.json file at {}".format(os.getcwd()))
+        print(f"created a {setting_path} setting file")
         return settings
 
 
-def save_settings_to_json(settings: dict):
+def save_settings_to_json(settings: dict,
+                            setting_sub_folder_name: str = "Stills_Marker_python_settings",
+                            setting_file_name: str = "settings.json"):
     # very weak path handling
-    with open(os.path.join(os.getcwd(), "settings.json"), "w") as j:
-        json.dump(settings, j)
+    try:
+        script_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        setting_path_folder = os.path.join(script_path, setting_sub_folder_name)
+        setting_path = os.path.join(setting_path_folder, setting_file_name)
+
+        with open(setting_path, "w") as j:
+            json.dump(settings, j)
+    except:
+        print("cannot find setting file")
 
 
 def reselect_album(album, gallery):
