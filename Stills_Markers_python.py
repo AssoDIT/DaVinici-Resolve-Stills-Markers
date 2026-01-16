@@ -50,7 +50,7 @@
 
 import os
 import subprocess
-import sys
+import sys, time
 import json
 from datetime import datetime
 
@@ -520,8 +520,19 @@ def export_markers_to_edl(timeline, markers_dict, edl_path):
         except:
             dur = 1.0
 
-        start_tc = frames_to_tc(float(fr), fps)
-        end_tc = frames_to_tc(float(fr) + dur, fps)
+        timeline_start = timeline.GetStartFrame()
+
+        start_tc = timecode_from_frame(
+            timeline_start + int(float(fr)),
+            fps,
+            False
+        )
+
+        end_tc = timecode_from_frame(
+            timeline_start + int(float(fr) + dur),
+            fps,
+            False
+        )
 
         lines.append(f"{idx:03d}  AX       V     C        00:00:00:00 00:00:00:01 {start_tc} {end_tc}")
         if color:
@@ -966,6 +977,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                     [
                         ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
                         ui.CheckBox({"Weight": 1, "ID": export_check_boxID, "Text": "Export grabbed stills", "Checked": settings["export"], "Events": {"Toggled": True}}),
+                        
+                        ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Format"}),
+                        ui.ComboBox({"Weight": 1, "ID": format_combo_boxID, "MinimumSize": [120, 0], "MaximumSize": [140, 16777215]}),
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
@@ -974,8 +988,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                 ui.HGap(0, 1),
                             ],
                         ),
-                        ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Format"}),
-                        ui.ComboBox({"Weight": 1, "ID": format_combo_boxID, "MinimumSize": [120, 0], "MaximumSize": [140, 16777215]}),
                     ],
                 ),
                 ui.VGap(2),
@@ -1072,7 +1084,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                     [
                         ui.HGap(0, 1),
                         ui.Button({"Weight": 0, "ID": cancel_buttonID, "Text": "Cancel", "AutoDefault": False}),
-                        ui.Button({"Weight": 0, "ID": start_buttonID, "Text": "Start", "AutoDefault": False, "Default": True}),
+                        ui.Button({"Weight": 0, "ID": start_buttonID, "Text": "Start", "AutoDefault": False}),
                     ],
                 ),
             ],
@@ -1091,14 +1103,20 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         need_output_dir = export_on or edl_on
         start_button_enabled = (not need_output_dir) or (len(window_items[export_to_line_editID].Text.strip()) > 0)
 
-        window_items[export_settingsID].Enabled = need_output_dir
+        # Export SETTINGS (resize, burnin, compress…) → uniquement export fichiers
+        window_items[export_settingsID].Enabled = export_on
+
         window_items[export_to_line_editID].Enabled = need_output_dir
         window_items[browse_buttonID].Enabled = need_output_dir
 
         window_items[format_combo_boxID].Enabled = export_on
 
-        create_sub = window_items[create_sub_folder_check_boxID].Checked
-        window_items[sub_folder_name_line_editID].Enabled = export_on and create_sub
+        # Folder options are enabled if either disk export OR EDL export is enabled
+        folder_opts_on = export_on or edl_on
+
+        window_items[create_timeline_folder_check_boxID].Enabled = folder_opts_on
+        window_items[create_sub_folder_check_boxID].Enabled = folder_opts_on
+        window_items[sub_folder_name_line_editID].Enabled = folder_opts_on
 
         resize_on = window_items[resize_check_boxID].Checked
         window_items[resize_check_boxID].Enabled = export_on
@@ -1207,10 +1225,12 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         dispatcher.ExitLoop(True)
 
     def OnWindowKeyPress(ev):
-        if ev["Key"] == 16777220:
-            OnStartButtonClicked(ev)
-        if ev["Key"] == 16777216:
+        if ev["Key"] == 16777216:  # Escape
             dispatcher.ExitLoop(False)
+            return
+
+        if ev["Key"] == 16777220:  # Enter
+            OnStartButtonClicked(ev)
 
     def OnClose(ev):
         dispatcher.ExitLoop()
@@ -1313,12 +1333,13 @@ if markers:
 
         # Output path used for disk export and EDL export
         output_path = None
-        need_output_dir = settings.get("export", False) or settings.get("export_edl_markers", False)
-        if need_output_dir:
+
+        # --- Disk export path (images only) ---
+        if settings.get("export", False):
             output_path = settings["export_to"]
 
             if settings.get("create_export_folder_timeline_name", False):
-                timeline_folder = f"{timeline.GetName()}".replace(" ", "_")
+                timeline_folder = timeline.GetName().replace(" ", "_")
                 output_path = os.path.join(output_path, timeline_folder)
 
                 if settings.get("create_sub_folder", False):
@@ -1328,164 +1349,166 @@ if markers:
 
             os.makedirs(output_path, exist_ok=True)
 
-        # EDL export
+        # --- EDL path (no folder creation) ---
+        elif settings.get("export_edl_markers", False):
+            output_path = settings["export_to"]
+
+        # EDL export (filtered by marker color)
         if settings.get("export_edl_markers", False):
-            edl_filename = f"{timeline.GetName()}_stillsMarkers.edl".replace(" ", "_")
-            edl_path = os.path.join(output_path if output_path else settings["export_to"], edl_filename)
-            export_markers_to_edl(timeline, markers_src, edl_path)
 
-        # Disk export
-        if settings.get("export", False):
-            prefix = ""
-            reselect_album(still_album, gallery)
+            selected_color = settings.get("markers", "Any")
 
-            if settings.get("burnin", False):
-                # Export 1 still à la fois, et récupération fiable du fichier exporté
-                for marker_frame in marker_frames:
-                    marker = markers_src.get(marker_frame)
-                    if not marker:
-                        continue
-                    if not (settings["markers"] == "Any" or settings["markers"] == marker["color"]):
-                        continue
-
-                    marker_offset_frame = timeline_start + marker_frame
-                    tc_timeline = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
-
-                    assert timeline.SetCurrentTimecode(tc_timeline), f"Couldn't navigate to marker at {tc_timeline}"
-                    grabbed = timeline.GrabStill()
-                    if not grabbed:
-                        raise Exception(f"Couldn't grab still at {tc_timeline}")
-
-                    if settings.get("rename_with_meta", False):
-                        still_album.SetLabel(
-                            grabbed,
-                            create_new_filename(
-                                timeline.GetCurrentVideoItem(),
-                                format_style=settings.get("rename_format_style", "US"),
-                                fallback_shot_from_scene=settings.get("rename_fallback_shot_from_scene", True),
-                            ),
-                        )
-
-                    ok, new_files = export_stills_and_get_new_files(
-                        still_album=still_album,
-                        stills_list=[grabbed],
-                        output_path=output_path,
-                        prefix=prefix,
-                        fmt=settings["format"],
-                    )
-                    if not ok or not new_files:
-                        continue
-
-                    # Normalement 1 fichier, mais si Resolve en crée plusieurs, on burnin chacun
-                    for img_path in new_files:
-                        # Source res + source tc (pas timeline)
-                        src_res_txt, src_tc_txt = get_source_resolution_and_tc_at_playhead(
-                            timeline=timeline,
-                            timeline_abs_frame=marker_offset_frame,
-                            frame_rate=frame_rate,
-                            drop_frame=drop_frame,
-                        )
-
-                        # Metadata (scene/shot/take/cam) inchangée
-                        clipname, scene, shot, take, camera, good_take = extract_fields_at_playhead(timeline)
-                        star = "*" if str(good_take).strip() in ["1", "true", "True", "YES", "Yes"] else ""
-
-                        # Si on ne peut pas calculer le TC source, on laisse vide plutôt que d’afficher un TC timeline
-                        center_parts = []
-                        if src_res_txt:
-                            center_parts.append(f"{src_res_txt} px")
-                        center_parts.append(clipname)
-                        if src_tc_txt:
-                            center_parts.append(src_tc_txt)
-                        center_txt = " - ".join([p for p in center_parts if p])
-
-                        right_txt = f"{scene}/{shot}-{take} {camera} {star}".strip()
-
-                        burnin_3zones_top_white(
-                            img_path,
-                            timeline_name=timeline.GetName(),
-                            center_text=center_txt,
-                            right_text=right_txt,
-                            out_path=img_path,
-                            font_path=settings.get("burnin_font_path") or None,
-                            margin=18,
-                            opacity=float(settings.get("burnin_opacity", 0.5)),
-                            auto_font=True,
-                            font_ratio=float(settings.get("burnin_font_ratio", 0.015)),
-                            min_font_size=int(settings.get("burnin_min_font_size", 18)),
-                            max_font_size=int(settings.get("burnin_max_font_size", 96)),
-                        )
-
+            if selected_color == "Any":
+                edl_markers = markers_src
             else:
-                # Batch mode: grab once, export once
-                stills_to_export = []
-                for marker_frame in marker_frames:
-                    marker = markers_src.get(marker_frame)
-                    if not marker:
-                        continue
-                    if not (settings["markers"] == "Any" or settings["markers"] == marker["color"]):
-                        continue
+                edl_markers = {
+                    fr: m for fr, m in markers_src.items()
+                    if m and m.get("color") == selected_color
+                }
 
-                    marker_offset_frame = timeline_start + marker_frame
-                    tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
+            edl_filename = f"{timeline.GetName()}_stillsMarkers.edl".replace(" ", "_")
+            edl_path = os.path.join(
+                output_path if output_path else settings["export_to"],
+                edl_filename
+            )
 
-                    assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
-                    grabbed = timeline.GrabStill()
-                    if not grabbed:
-                        raise Exception(f"Couldn't grab still at {tc}")
+            export_markers_to_edl(timeline, edl_markers, edl_path)
 
-                    stills_to_export.append(grabbed)
+if grab_stills:
+    markers_src = markers if not settings.get("restrict_to_in_out", False) else markers_in_out
+    marker_frames = sorted(markers_src.keys())
 
-                    if settings.get("rename_with_meta", False):
-                        still_album.SetLabel(
-                            grabbed,
-                            create_new_filename(
-                                timeline.GetCurrentVideoItem(),
-                                format_style=settings.get("rename_format_style", "US"),
-                                fallback_shot_from_scene=settings.get("rename_fallback_shot_from_scene", True),
-                            ),
-                        )
+    # --- ALWAYS grab stills into gallery ---
+    stills_to_export = []
 
-                assert still_album.ExportStills(stills_to_export, output_path, prefix, settings["format"]), "ExportStills failed"
+    for marker_frame in marker_frames:
+        marker = markers_src.get(marker_frame)
+        if not marker:
+            continue
+        if not (settings["markers"] == "Any" or settings["markers"] == marker["color"]):
+            continue
 
-            # Resize stills (applies to both modes, AFTER export)
-            if settings.get("resize_stills", False):
-                images = [
-                    os.path.join(output_path, image)
-                    for image in os.listdir(output_path)
-                    if image.lower().endswith("." + settings["format"].lower())
-                ]
+        marker_offset_frame = timeline_start + marker_frame
+        tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
+
+        assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
+        grabbed = timeline.GrabStill()
+        if not grabbed:
+            raise Exception(f"Couldn't grab still at {tc}")
+
+        stills_to_export.append((grabbed, marker_offset_frame))
+
+        if settings.get("rename_with_meta", False):
+            still_album.SetLabel(
+                grabbed,
+                create_new_filename(
+                    timeline.GetCurrentVideoItem(),
+                    format_style=settings.get("rename_format_style", "US"),
+                    fallback_shot_from_scene=settings.get("rename_fallback_shot_from_scene", True),
+                ),
+            )
+
+# --- DISK EXPORT (optional) ---
+if settings.get("export", False) and stills_to_export:
+    prefix = ""
+    reselect_album(still_album, gallery)
+
+    if settings.get("burnin", False):
+        # Export un still à la fois pour burnin fiable
+        for grabbed, marker_offset_frame in stills_to_export:
+            ok, new_files = export_stills_and_get_new_files(
+                still_album=still_album,
+                stills_list=[grabbed],
+                output_path=output_path,
+                prefix=prefix,
+                fmt=settings["format"],
+            )
+            if not ok or not new_files:
+                continue
+
+            for img_path in new_files:
+                # Source resolution + source TC
+                src_res_txt, src_tc_txt = get_source_resolution_and_tc_at_playhead(
+                    timeline=timeline,
+                    timeline_abs_frame=marker_offset_frame,
+                    frame_rate=frame_rate,
+                    drop_frame=drop_frame,
+                )
+
+                clipname, scene, shot, take, camera, good_take = extract_fields_at_playhead(timeline)
+                star = "*" if str(good_take).strip().lower() in ["1", "true", "yes"] else ""
+
+                center_parts = []
+                if src_res_txt:
+                    center_parts.append(f"{src_res_txt} px")
+                center_parts.append(clipname)
+                if src_tc_txt:
+                    center_parts.append(src_tc_txt)
+
+                center_txt = " - ".join(p for p in center_parts if p)
+                right_txt = f"{scene}/{shot}-{take} {camera} {star}".strip()
+
+                burnin_3zones_top_white(
+                    img_path,
+                    timeline_name=timeline.GetName(),
+                    center_text=center_txt,
+                    right_text=right_txt,
+                    out_path=img_path,
+                    font_path=settings.get("burnin_font_path") or None,
+                    margin=18,
+                    opacity=float(settings.get("burnin_opacity", 0.5)),
+                    auto_font=True,
+                    font_ratio=float(settings.get("burnin_font_ratio", 0.015)),
+                    min_font_size=int(settings.get("burnin_min_font_size", 18)),
+                    max_font_size=int(settings.get("burnin_max_font_size", 96)),
+                )
+
+    else:
+        # Batch export sans burnin
+        assert still_album.ExportStills(
+            [s for s, _ in stills_to_export],
+            output_path,
+            prefix,
+            settings["format"],
+        ), "ExportStills failed"
+
+        # Resize stills (applies to both modes, AFTER export)
+        if settings.get("resize_stills", False):
+            images = [
+                os.path.join(output_path, image)
+                for image in os.listdir(output_path)
+                if image.lower().endswith("." + settings["format"].lower())
+            ]
+            for image in images:
+                resize_image(image, int(settings["resize_percentage"]), settings["replace_original_exports"])
+
+            if int(settings.get("resize_percentage", 100)) > 100:
+                timeline_resolution_override(project, timeline, resolution_tuple, 100)
                 for image in images:
-                    resize_image(image, int(settings["resize_percentage"]), settings["replace_original_exports"])
+                    resize_image(image, 100, settings["replace_original_exports"], original_size=resolution_tuple[:2])
 
-                if int(settings.get("resize_percentage", 100)) > 100:
-                    timeline_resolution_override(project, timeline, resolution_tuple, 100)
-                    for image in images:
-                        resize_image(image, 100, settings["replace_original_exports"], original_size=resolution_tuple[:2])
 
-            # Remove DRX (works for both modes)
-            if settings.get("remove_drx", False) and output_path and os.path.isdir(output_path):
-                drx_files = [
-                    os.path.join(output_path, drx_file)
-                    for drx_file in os.listdir(output_path)
-                    if drx_file.lower().endswith(".drx")
-                ]
-                for drx_file in drx_files:
-                    try:
-                        os.remove(drx_file)
-                    except:
-                        pass
+        # Compress (jpg only)
+        if settings.get("compress", False):
+            if detect_system_and_image_optim_installed() and settings.get("format") == "jpg":
+                try:
+                    imageoptim_command = f'open -a ImageOptim "{output_path}"/*.jpg'
+                    subprocess.run(imageoptim_command, shell=True)
+                except:
+                    print("Couldn't open ImageOptim.app")
+                    print("Make sure ImageOptim.app is installed and try again.")
+            else:
+                print("Couldn't find ImageOptim.app in applications folder (or format not jpg).")
 
-            # Compress (jpg only)
-            if settings.get("compress", False):
-                if detect_system_and_image_optim_installed() and settings.get("format") == "jpg":
-                    try:
-                        imageoptim_command = f'open -a ImageOptim "{output_path}"/*.jpg'
-                        subprocess.run(imageoptim_command, shell=True)
-                    except:
-                        print("Couldn't open ImageOptim.app")
-                        print("Make sure ImageOptim.app is installed and try again.")
-                else:
-                    print("Couldn't find ImageOptim.app in applications folder (or format not jpg).")
+    # --- FINAL DRX CLEANUP (post-export, reliable) ---
+    if settings.get("remove_drx", False) and settings.get("export", False):
+        if output_path and os.path.isdir(output_path):
+            for root, _, files in os.walk(output_path):
+                for fn in files:
+                    if fn.lower().endswith(".drx"):
+                        try:
+                            os.remove(os.path.join(root, fn))
+                        except Exception as e:
+                            print(f"Could not remove DRX {fn}: {e}")
 
-        restore_page(initial_state)
+    restore_page(initial_state)
