@@ -1416,6 +1416,10 @@ if settings.get("export", False) and stills_to_export:
     if settings.get("burnin", False):
         # Export un still à la fois pour burnin fiable
         for grabbed, marker_offset_frame in stills_to_export:
+
+            # repositionner le playhead AVANT de lire les métadonnées
+            tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
+            timeline.SetCurrentTimecode(tc)
             ok, new_files = export_stills_and_get_new_files(
                 still_album=still_album,
                 stills_list=[grabbed],
