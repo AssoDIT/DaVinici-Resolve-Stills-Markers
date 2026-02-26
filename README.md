@@ -12,15 +12,26 @@ Converted to python from lua script created by Roger Magnusson.
 ### Pillow Installation Guide
 
 #### Installation on macOS
+1. **Find your Resolve python version**:
+- Open DaVinci Resolve Studio
+- open the console (workspace > console)
+- choose the Py3 tab between programming languages
+- enter :
+    ```python3
+   import sys
+   print(sys.version)
+    ```
+- you can read your version of python : "3.13.2 (v3.13.2:4f8bb3947cf, Feb  4 2025, 11:51:10)" 
 
-1. **Open Terminal**: You can find it in Applications > Utilities.
 
-2. **Ensure pip is installed**:
+2. **Open Terminal**: You can find it in Applications > Utilities.
+
+3. **Ensure pip is installed**:
    ```bash
    python3 -m ensurepip --upgrade
     ```
    
-3. **Install Pillow**:
+4. **Install Pillow** adapt to your actual python3 version ("python3.13" for instance):
    ```bash
    python3 -m pip install --upgrade pip
    python3 -m pip install --upgrade Pillow
