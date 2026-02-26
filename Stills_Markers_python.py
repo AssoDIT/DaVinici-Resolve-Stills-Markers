@@ -1116,7 +1116,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         window_items[create_timeline_folder_check_boxID].Enabled = folder_opts_on
         window_items[create_sub_folder_check_boxID].Enabled = folder_opts_on
-        window_items[sub_folder_name_line_editID].Enabled = folder_opts_on
+        window_items[sub_folder_name_line_editID].Enabled = window_items[create_sub_folder_check_boxID].Checked
 
         resize_on = window_items[resize_check_boxID].Checked
         window_items[resize_check_boxID].Enabled = export_on
@@ -1327,25 +1327,37 @@ if markers:
         marker_frames = sorted(markers_src.keys())
 
         # Timeline resolution override (only makes sense for disk export)
-        if settings.get("resize_stills", False) and int(settings.get("resize_percentage", 100)) > 100 and settings.get("export", False):
-            tres, tres2, pres, pres2 = timeline_resolution_override(project, timeline, resolution_tuple, settings["resize_percentage"])
+        if settings.get("resize_stills", False) \
+           and int(settings.get("resize_percentage", 100)) > 100 \
+           and settings.get("export", False):
+
+            tres, tres2, pres, pres2 = timeline_resolution_override(
+                project,
+                timeline,
+                resolution_tuple,
+                settings["resize_percentage"]
+            )
             print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
 
-        # Output path used for disk export and EDL export
-        output_path = None
 
-        # --- Disk export path (images only) ---
+        # -------------------------------------------------
+        # Disk export path
+        # -------------------------------------------------
+
         if settings.get("export", False):
+
             output_path = settings["export_to"]
 
+            # Timeline folder
             if settings.get("create_export_folder_timeline_name", False):
                 timeline_folder = timeline.GetName().replace(" ", "_")
                 output_path = os.path.join(output_path, timeline_folder)
 
-                if settings.get("create_sub_folder", False):
-                    subfolder_name = settings.get("sub_folder_name", "").strip()
-                    if subfolder_name:
-                        output_path = os.path.join(output_path, subfolder_name.replace(" ", "_"))
+            # Sub folder
+            if settings.get("create_sub_folder", False):
+                subfolder_name = settings.get("sub_folder_name", "").strip()
+                if subfolder_name:
+                    output_path = os.path.join(output_path, subfolder_name.replace(" ", "_"))
 
             os.makedirs(output_path, exist_ok=True)
 
