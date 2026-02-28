@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Burnin Settings</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="title">Data Burn In</div>
+      <div class="status" id="saveStatus">Non connecté</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel left">
+        <h2>Metadata Burnin Builder</h2>
+
+        <div class="hint">
+          Clique sur une métadonnée pour l'ajouter au layout.
+        </div>
+
+        <div id="metadataTokenList" class="tokenList"></div>
+
+      </section>
+
+      <section class="panel middle">
+        <h2>Preview</h2>
+        <div class="row">
+          <span>Image</span>
+          <input id="imgPicker" type="file" accept="image/*" />
+        </div>
+        <div class="previewWrap">
+          <canvas id="previewCanvas" width="1280" height="720"></canvas>
+        </div>
+      </section>
+
+      <section class="panel right">
+        <h2>Éditeur de token</h2>
+        <div class="sep"></div>
+        <h2>Burnin Layout</h2>
+        <div id="burninLayoutList"></div>
+        <div class="hint">
+          Clique pour sélectionner. Clic droit pour supprimer.
+        </div>
+        <div class="sep"></div>
+
+        <h3>Custom Template</h3>
+        <label class="row">
+          <span>Template</span>
+          <input id="metaTemplateCustom" type="text" placeholder="%Scene / %Shot - %Take %Good_Take" />
+        </label>
+
+        <h3>Position & Taille</h3>
+
+        <label class="row sliderRow">
+          <span>Position X</span>
+          <input id="metaPosX" type="range" min="0" max="100" step="0.1" value="50" />
+          <span id="metaPosXVal" class="liveVal">50%</span>
+        </label>
+
+        <label class="row sliderRow">
+          <span>Position Y</span>
+          <input id="metaPosY" type="range" min="0" max="100" step="0.1" value="50" />
+          <span id="metaPosYVal" class="liveVal">50%</span>
+        </label>
+
+        <label class="row">
+          <span>Align</span>
+          <select id="metaAlign">
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+
+        <label class="row">
+          <span>Font Size (pt)</span>
+          <input id="metaFontSize" type="number" min="1" max="300" step="0.5" value="24" />
+        </label>
+
+        <label class="row">
+          <span>Text Color</span>
+          <input id="metaColor" type="color" value="#ffffff" />
+        </label>
+
+        <label class="row sliderRow">
+          <span>Opacity</span>
+          <input id="metaOpacity" type="range" min="0" max="1" step="0.01" value="0.50" />
+          <span id="metaOpacityVal" class="liveVal">0.50</span>
+        </label>
+
+        <label class="row">
+          <span>Font</span>
+          <select id="metaFontFamily"></select>
+        </label>
+
+        <label class="row">
+          <span>Load Font</span>
+          <input id="fontFilePicker" type="file" accept=".ttf,.otf,.ttc" />
+        </label>
+
+        <label class="row">
+          <span>Weight</span>
+          <label><input id="metaBold" type="checkbox" /> Bold</label>
+        </label>
+
+        <div class="row actions">
+          <button id="btnReload" type="button">Reload JSON</button>
+          <button id="btnSave" type="button">Save now</button>
+        </div>
+
+        <div class="sep"></div>
+        <h3>Safe Guides</h3>
+
+        <label class="row">
+          <label><input id="safeGuides" type="checkbox" checked /> Enable guides</label>
+        </label>
+
+        <label class="row">
+          <span>Outer</span>
+          <input id="safeGuideOuter" type="range" min="0" max="0.2" step="0.005" value="0.05" />
+        </label>
+
+        <label class="row">
+          <span>Inner</span>
+          <input id="safeGuideInner" type="range" min="0" max="0.2" step="0.005" value="0.10" />
+        </label>
+
+        <div class="hint">
+          Sauvegarde automatique après modification, avec un délai court.
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+  <style>
+    .liveVal{
+      display:inline-block;
+      min-width:48px;
+      font-size:12px;
+      color:#9aa3b2;
+      margin-left:8px;
+    }
+    .sliderRow{
+      display:grid;
+      grid-template-columns:120px 1fr 60px;
+      align-items:center;
+      gap:10px;
+    }
+
+    .sliderRow input[type="range"]{
+      width:100%;
+    }
+
+    .liveVal{
+      text-align:right;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</body>
+</html>

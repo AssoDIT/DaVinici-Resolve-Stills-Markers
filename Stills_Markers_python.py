@@ -499,14 +499,7 @@ dict_settings = {
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
     "rename_scene_shot_separator": "/",
-    "burnin": False,
-    "burnin_font_path": "",
-    "burnin_font_ratio": 0.015,
-    "burnin_min_font_size": 18,
-    "burnin_max_font_size": 96,
-    "burnin_opacity": 0.5,
-    "burnin_margin": 18,
-    "burnin_auto_font": True
+    "burnin": False
 }
 
 
@@ -599,6 +592,7 @@ def _choose_macos_font(font_path, font_size):
     return ImageFont.load_default()
 
 
+
 def burnin_3zones_top_white(
     image_path,
     timeline_name,
@@ -665,14 +659,237 @@ def burnin_3zones_top_white(
 
     return out_path
 
+# ---------------------------------------------------------------------------
+# Generic burnin driven entirely by burnin_web_settings.json
+# Each element defines:
+#   - key (metadata key)
+#   - x (0-1 relative)
+#   - y (0-1 relative)
+#   - font_ratio
+#   - opacity
+#   - align ("left" | "center" | "right")
+# ---------------------------------------------------------------------------
+def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
+    # Accept either {"elements":[...]} OR direct list format [...]
+    if not burnin_cfg:
+        return image_path
+    if isinstance(burnin_cfg, list):
+        elements = burnin_cfg
+    else:
+        elements = burnin_cfg.get("elements", [])
+    if not elements:
+        return image_path
+
+    base = Image.open(image_path).convert("RGBA")
+    W, H = base.size
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    full_meta = metadata_block.get("metadata", {})
+    full_props = metadata_block.get("clip_properties", {})
+
+    def resolve_value(key):
+        """
+        Flexible key resolver matching Timeline_1_stills_full_metadata.json structure.
+        Handles:
+        - top-level fields (timeline_frame, timeline_tc, clip_name, source_tc, etc.)
+        - metadata dict
+        - clip_properties dict
+        - case differences
+        - spaces vs underscores
+        - hashes in keys (e.g., Camera#, Camera #, Camera_#)
+        - Good_Take special rule: if value == 1/true/yes → returns "★"
+        """
+        if not key:
+            return ""
+
+        def normalize(s):
+            return (
+                str(s)
+                .replace(" ", "_")
+                .replace("#", "_#")
+                .lower()
+                .strip()
+            )
+
+        target = normalize(key)
+
+        # ---- Explicit alias handling for Clipname ----
+        # Accept "Clipname", "clip_name", "%Clipname" etc.
+        if target in ["clipname", "clip_name"]:
+            val = metadata_block.get("clip_name")
+            if val:
+                return str(val)
+
+        def transform_if_good_take(k, v):
+            # Normalize key to detect Good Take reliably
+            if normalize(k) == "good_take":
+                val = str(v).strip().lower()
+                if val in ["1", "true", "yes"]:
+                    return "*"
+                return ""
+            return str(v)
+
+        # ---- 1. Top-level metadata_block ----
+        for k, v in metadata_block.items():
+            if normalize(k) == target and v is not None:
+                return transform_if_good_take(k, v)
+
+        # ---- 2. Nested metadata ----
+        if isinstance(full_meta, dict):
+            for k, v in full_meta.items():
+                if normalize(k) == target and v is not None:
+                    return transform_if_good_take(k, v)
+
+        # ---- 3. Nested clip_properties ----
+        if isinstance(full_props, dict):
+            for k, v in full_props.items():
+                if normalize(k) == target and v is not None:
+                    return transform_if_good_take(k, v)
+
+        return ""
+
+    for el in elements:
+        key = el.get("key")
+        if not key:
+            continue
+
+        # -----------------------------
+        # CUSTOM TOKEN SUPPORT
+        # JSON must explicitly contain tokens
+        # -----------------------------
+        if key == "custom":
+            tokens = el.get("custom_tokens") or []
+            template_parts = el.get("template_parts") or {}
+
+            text_parts = []
+
+            # 1) Structured template_parts support (authoritative)
+            if isinstance(template_parts, dict) and isinstance(template_parts.get("parts"), list):
+                for part in template_parts.get("parts"):
+                    ptype = part.get("type")
+
+                    if ptype == "text":
+                        text_parts.append(str(part.get("value", "")))
+
+                    elif ptype == "token":
+                        # Accept both "key" and legacy "value"
+                        token_key = part.get("key") or part.get("value")
+                        if not token_key:
+                            continue
+
+                        token_key = str(token_key).strip()
+                        token_val = resolve_value(token_key)
+
+                        if token_val:
+                            text_parts.append(str(token_val))
+
+            # 2) Fallback: custom_tokens array
+            elif tokens:
+                for token_key in tokens:
+                    token_key = str(token_key).strip()
+                    token_val = resolve_value(token_key)
+                    if token_val:
+                        text_parts.append(str(token_val))
+
+            value = "".join(text_parts).strip()
+
+            if not value:
+                continue
+        else:
+            value = resolve_value(key)
+            if not value:
+                continue
+
+        # Accept either font_ratio or font_size_percent
+        font_ratio = float(
+            el.get("font_ratio")
+            or el.get("font_size_percent")
+            or 0.02
+        )
+        font_size = max(12, int(W * font_ratio))
+
+        # ---- FONT + BOLD SUPPORT ----
+        font_path_cfg = burnin_cfg.get("burnin_font_path")
+        # Accept both legacy boolean "bold" and CSS-like "font_weight"
+        fw = str(el.get("font_weight", "")).strip().lower()
+        use_bold = bool(el.get("bold", False)) or fw == "bold"
+
+        if use_bold:
+            bold_candidates = [
+                font_path_cfg,
+                "/System/Library/Fonts/Supplemental/Helvetica Bold.ttf",
+                "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+                "/Library/Fonts/Arial Bold.ttf",
+                "/Library/Fonts/Helvetica Bold.ttf",
+            ]
+
+            font = None
+            for p in bold_candidates:
+                if p and os.path.exists(p):
+                    try:
+                        font = ImageFont.truetype(p, font_size)
+                        break
+                    except:
+                        pass
+
+            if font is None:
+                font = _choose_macos_font(font_path_cfg, font_size)
+        else:
+            font = _choose_macos_font(font_path_cfg, font_size)
+
+        opacity = max(0.0, min(1.0, float(el.get("opacity", 1.0))))
+        alpha = int(255 * opacity)
+
+        # ---- COLOR SUPPORT (hex like "#ff0000") ----
+        color_hex = el.get("color", "#ffffff")
+        r, g, b = 255, 255, 255
+
+        try:
+            if isinstance(color_hex, str) and color_hex.startswith("#"):
+                hex_val = color_hex.lstrip("#")
+                if len(hex_val) == 6:
+                    r = int(hex_val[0:2], 16)
+                    g = int(hex_val[2:4], 16)
+                    b = int(hex_val[4:6], 16)
+        except:
+            pass
+
+        fill = (r, g, b, alpha)
+
+        x_rel = float(el.get("x", 0.5))
+        y_rel = float(el.get("y", 0.05))
+
+        x = int(W * x_rel)
+        y = int(H * y_rel)
+
+        align = el.get("align", "left")
+
+        bbox = draw.textbbox((0, 0), value, font=font)
+        tw = bbox[2] - bbox[0]
+
+        if align == "center":
+            x = x - int(tw / 2)
+        elif align == "right":
+            x = x - tw
+
+        draw.text((x, y), value, font=font, fill=fill)
+
+    out = Image.alpha_composite(base, overlay)
+
+    if out_path is None:
+        out_path = image_path
+
+    ext = os.path.splitext(out_path)[1].lower()
+    if ext in [".jpg", ".jpeg"]:
+        out.convert("RGB").save(out_path, quality=95)
+    else:
+        out.save(out_path)
+
+    return out_path
+
 
 settings = load_settings_from_json(dict_settings)
-# --- Override burnin settings from web config if available ---
-burnin_web_settings = load_burnin_web_settings()
-if burnin_web_settings:
-    for k, v in burnin_web_settings.items():
-        if k.startswith("burnin_"):
-            settings[k] = v
 
 ui = fusion.UIManager
 dispatcher = bmd.UIDispatcher(ui)
@@ -1626,19 +1843,12 @@ if settings.get("export", False) and stills_to_export:
                 center_txt = " - ".join(p for p in center_parts if p)
                 right_txt = f"{scene}/{shot}-{take} {camera} {star}".strip()
 
-                burnin_3zones_top_white(
-                    img_path,
-                    timeline_name=timeline.GetName(),
-                    center_text=center_txt,
-                    right_text=right_txt,
-                    out_path=img_path,
-                    font_path=settings.get("burnin_font_path") or None,
-                    margin=int(settings.get("burnin_margin", 18)),
-                    opacity=float(settings.get("burnin_opacity", 0.5)),
-                    auto_font=bool(settings.get("burnin_auto_font", True)),
-                    font_ratio=float(settings.get("burnin_font_ratio", 0.015)),
-                    min_font_size=int(settings.get("burnin_min_font_size", 18)),
-                    max_font_size=int(settings.get("burnin_max_font_size", 96)),
+                burnin_web_settings = load_burnin_web_settings()
+                burnin_from_web_json(
+                    image_path=img_path,
+                    metadata_block=meta_block,
+                    burnin_cfg=burnin_web_settings,
+                    out_path=img_path
                 )
 
                 # Register filename in JSON
@@ -1697,7 +1907,7 @@ if settings.get("export", False) and stills_to_export:
     try:
         metadata_json_path = os.path.join(
             output_path,
-            f"{timeline.GetName()}_stills_full_metadata.json".replace(" ", "_")
+            f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
         )
         with open(metadata_json_path, "w", encoding="utf-8") as jf:
             json.dump(metadata_json, jf, indent=4)
