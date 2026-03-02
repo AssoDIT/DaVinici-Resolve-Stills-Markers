@@ -22,38 +22,96 @@ def _safe_int(v, default):
         return default
 
 def sanitize_payload(data: dict) -> dict:
-    """
-    Conserve uniquement la structure attendue pour le moteur burnin.
-    Structure finale :
+    """\
+    Keep only the structure expected by the burnin engine, while supporting
+    the new web UI fields.
+
+    Final structure:
     {
       "burnin_font_path": str,
       "burnin_opacity": float,
       "burnin_font_family": str,
+
+      # Preview / ratio & mask (saved so the web UI keeps state)
+      "preview": {
+        "ratio": float,                 # e.g. 1.77
+        "mode": "crop"|"fit",          # crop ratio vs fit inside ratio
+        "mask_style": "bars"|"lines"|"bars_lines",
+        "mask_opacity": float,
+        "safe_guides": {
+          "enabled": bool,
+          "style": "bars"|"lines"|"bars_lines",
+          "opacity": float
+        }
+      },
+
       "elements": [
-         {
-           "key": str,
-           "x": float,
-           "y": float,
-           "font_size_pt": int,
-           "opacity": float,
-           "align": "left"|"center"|"right",
-           "font_family": str,
-           "font_weight": "normal"|"bold",
-           "color": str,
-           # if key == "custom"
-           "template_custom": str,
-           "template_parts": dict,
-           "custom_tokens": list[str]
-         }
+        {
+          "id": str,                    # stable id from UI (optional)
+          "key": str,
+          "x": float,                   # 0..1
+          "y": float,                   # 0..1
+          "font_size_pt": int,
+          "opacity": float,             # 0..1
+          "align": "left"|"center"|"right",
+          "font_family": str,
+          "font_weight": "normal"|"bold",
+          "color": str,                 # hex like #ffffff
+
+          # if key == "custom"
+          "template_custom": str,
+          "template_parts": {"parts": [...]},
+          "custom_tokens": ["Scene", "Shot", ...]
+        }
       ]
     }
     """
-    out = {}
 
+    out: dict = {}
+
+    # ---- global settings ----
     out["burnin_font_path"] = str(data.get("burnin_font_path", "")).strip()
     out["burnin_opacity"] = max(0.0, min(1.0, _safe_float(data.get("burnin_opacity", 1.0), 1.0)))
-    out["burnin_font_family"] = str(data.get("burnin_font_family", "Arial")).strip()
+    out["burnin_font_family"] = str(data.get("burnin_font_family", "Arial")).strip() or "Arial"
 
+    # ---- preview state (ratio / mask / guides) ----
+    preview_in = data.get("preview") if isinstance(data.get("preview"), dict) else {}
+
+    ratio = _safe_float(preview_in.get("ratio", data.get("ratio", 1.77)), 1.77)
+    # Allow only the listed ratios. If unknown, fallback to 1.77.
+    allowed_ratios = {1.33, 1.66, 1.77, 1.85, 2.00, 2.35, 2.39, 2.40}
+    ratio = ratio if ratio in allowed_ratios else 1.77
+
+    mode = str(preview_in.get("mode", data.get("ratio_mode", "crop"))).strip().lower()
+    if mode not in {"crop", "fit"}:
+        mode = "crop"
+
+    mask_style = str(preview_in.get("mask_style", data.get("mask_style", "bars"))).strip().lower()
+    if mask_style not in {"bars", "lines", "bars_lines"}:
+        mask_style = "bars"
+
+    mask_opacity = max(0.0, min(1.0, _safe_float(preview_in.get("mask_opacity", data.get("mask_opacity", 1.0)), 1.0)))
+
+    safe_in = preview_in.get("safe_guides") if isinstance(preview_in.get("safe_guides"), dict) else {}
+    safe_enabled = bool(safe_in.get("enabled", data.get("safe_guides", False)))
+    safe_style = str(safe_in.get("style", data.get("safe_guides_style", "lines"))).strip().lower()
+    if safe_style not in {"bars", "lines", "bars_lines"}:
+        safe_style = "lines"
+    safe_opacity = max(0.0, min(1.0, _safe_float(safe_in.get("opacity", data.get("safe_guides_opacity", 1.0)), 1.0)))
+
+    out["preview"] = {
+        "ratio": ratio,
+        "mode": mode,
+        "mask_style": mask_style,
+        "mask_opacity": mask_opacity,
+        "safe_guides": {
+            "enabled": safe_enabled,
+            "style": safe_style,
+            "opacity": safe_opacity,
+        },
+    }
+
+    # ---- elements ----
     elements_in = data.get("elements", [])
     elements_out = []
 
@@ -66,52 +124,59 @@ def sanitize_payload(data: dict) -> dict:
             if not key:
                 continue
 
+            element_id = str(el.get("id", "")).strip()
+
             element = {
+                "id": element_id,
                 "key": key,
                 "x": max(0.0, min(1.0, _safe_float(el.get("x", 0.5), 0.5))),
                 "y": max(0.0, min(1.0, _safe_float(el.get("y", 0.5), 0.5))),
                 "font_size_pt": max(4, min(400, _safe_int(el.get("font_size_pt", 24), 24))),
                 "opacity": max(0.0, min(1.0, _safe_float(el.get("opacity", 1.0), 1.0))),
                 "align": str(el.get("align", "center")).lower(),
-                "font_family": str(el.get("font_family", out["burnin_font_family"])).strip(),
-                "font_weight": str(el.get("font_weight", "normal")).lower()
+                "font_family": str(el.get("font_family", out["burnin_font_family"])).strip() or out["burnin_font_family"],
+                "font_weight": str(el.get("font_weight", "normal")).lower(),
             }
-
-            # Support both "color" and legacy "font_color"
-            raw_color = el.get("color", el.get("font_color", "#ffffff"))
-            element_color = str(raw_color).strip()
-            if not element_color:
-                element_color = "#ffffff"
-            element["color"] = element_color
 
             if element["align"] not in ["left", "center", "right"]:
                 element["align"] = "center"
-
             if element["font_weight"] not in ["normal", "bold"]:
                 element["font_weight"] = "normal"
 
-            # --- Custom support (preserve structured custom element) ---
+            # Support multiple UI field names for text color
+            raw_color = el.get("color", el.get("text_color", el.get("font_color", "#ffffff")))
+            element_color = str(raw_color).strip() or "#ffffff"
+            element["color"] = element_color
+
+            # --- Custom support: preserve structured custom element ---
             if key == "custom":
+                # Preserve raw template string
                 element["template_custom"] = str(el.get("template_custom", "")).strip()
 
+                # Preserve template_parts exactly as provided if structurally valid
                 template_parts = el.get("template_parts")
                 if isinstance(template_parts, dict) and isinstance(template_parts.get("parts"), list):
                     element["template_parts"] = {
-                        "parts": template_parts.get("parts")
+                        "parts": [
+                            {
+                                "type": str(p.get("type", "")).strip(),
+                                # Preserve value exactly (no strip to keep spaces)
+                                "value": str(p.get("value", "")),
+                            }
+                            for p in template_parts.get("parts", [])
+                            if isinstance(p, dict)
+                        ]
                     }
                 else:
                     element["template_parts"] = {"parts": []}
 
+                # Preserve custom_tokens exactly (no filtering logic)
                 custom_tokens = el.get("custom_tokens")
                 if isinstance(custom_tokens, list):
-                    element["custom_tokens"] = [str(t).strip() for t in custom_tokens if str(t).strip()]
+                    element["custom_tokens"] = [str(t) for t in custom_tokens]
                 else:
                     element["custom_tokens"] = []
 
-                elements_out.append(element)
-                continue
-
-            # Normal element
             elements_out.append(element)
 
     out["elements"] = elements_out

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,16 +9,18 @@
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="title">Data Burn In</div>
-      <div class="status" id="saveStatus">Non connecté</div>
+      <div class="title"><img src="ADIT-Avatar-dark-2.png" style="width:5em"> • DaVinci Resolve Stills Burn In</div>
+
+      <div class="status" id="saveStatus">Disconnected</div>
+      <button id="btnHelp" class="helpBtn" type="button">Help</button>
     </header>
 
     <main class="layout">
       <section class="panel left">
-        <h2>Metadata Burnin Builder</h2>
+        <h2>Metadata Burn-in Builder</h2>
 
         <div class="hint">
-          Clique sur une métadonnée pour l'ajouter au layout.
+          Click a metadata item to add it to the layout.
         </div>
 
         <div id="metadataTokenList" class="tokenList"></div>
@@ -34,25 +36,89 @@
         <div class="previewWrap">
           <canvas id="previewCanvas" width="1280" height="720"></canvas>
         </div>
+        <div class="sep"></div>
+
+        <div class="row ratioControls">
+          <div class="inlineField">
+            <label>Ratio</label>
+            <select id="imageRatio">
+              <option value="1.33">1.33</option>
+              <option value="1.66">1.66</option>
+              <option value="1.77" selected>1.77</option>
+              <option value="1.85">1.85</option>
+              <option value="2.00">2.00</option>
+              <option value="2.35">2.35</option>
+              <option value="2.39">2.39</option>
+              <option value="2.40">2.40</option>
+            </select>
+          </div>
+
+          <div class="inlineField">
+            <label>Mode</label>
+            <select id="imageRatioMode">
+              <option value="crop" selected>Crop</option>
+              <option value="fit">Fit</option>
+            </select>
+          </div>
+
+          <div class="inlineField">
+            <label>Mask</label>
+            <select id="maskStyle">
+              <option value="bars" selected>Bars</option>
+              <option value="lines">Frame</option>
+              <option value="bars_lines">Bars + Frame</option>
+            </select>
+          </div>
+
+          <div class="inlineField sliderInline">
+            <label>Opacity</label>
+            <input id="maskOpacity" type="range" min="0" max="1" step="0.01" value="1" />
+            <span id="maskOpacityVal" class="liveVal">1.00</span>
+          </div>
+        </div>
+
+        <h3>Safe Guides</h3>
+
+        <div class="safeControls">
+          <div class="safeField">
+            <label>
+              <input id="safeGuides" type="checkbox" checked /> Enable
+            </label>
+          </div>
+
+          <div class="safeField">
+            <label>Outer</label>
+            <input id="safeGuideOuter" type="range" min="0" max="0.2" step="0.005" value="0.05" />
+          </div>
+
+          <div class="safeField">
+            <label>Inner</label>
+            <input id="safeGuideInner" type="range" min="0" max="0.2" step="0.005" value="0.10" />
+          </div>
+        </div>
       </section>
 
       <section class="panel right">
-        <h2>Éditeur de token</h2>
+        <h2>Token Editor</h2>
         <div class="sep"></div>
-        <h2>Burnin Layout</h2>
-        <div id="burninLayoutList"></div>
+        <h2>Burn-in Layout</h2>
         <div class="hint">
-          Clique pour sélectionner. Clic droit pour supprimer.
+          Click to select. Right-click to delete.
         </div>
+        <div id="burninLayoutList"></div>
+
+        <div id="tokenControls" class="tokenControls hidden">
         <div class="sep"></div>
+        <div id="customTemplateBlock">
+          <h3>Custom Template</h3>
+          <label class="row">
+            <span>Template</span>
+            <input id="metaTemplateCustom" type="text" placeholder="%Scene / %Shot - %Take %Good_Take" />
+          </label>
+          <div class="sep"></div>
+        </div>
 
-        <h3>Custom Template</h3>
-        <label class="row">
-          <span>Template</span>
-          <input id="metaTemplateCustom" type="text" placeholder="%Scene / %Shot - %Take %Good_Take" />
-        </label>
-
-        <h3>Position & Taille</h3>
+        <h3>Position & Size</h3>
 
         <label class="row sliderRow">
           <span>Position X</span>
@@ -110,29 +176,61 @@
           <button id="btnReload" type="button">Reload JSON</button>
           <button id="btnSave" type="button">Save now</button>
         </div>
-
-        <div class="sep"></div>
-        <h3>Safe Guides</h3>
-
-        <label class="row">
-          <label><input id="safeGuides" type="checkbox" checked /> Enable guides</label>
-        </label>
-
-        <label class="row">
-          <span>Outer</span>
-          <input id="safeGuideOuter" type="range" min="0" max="0.2" step="0.005" value="0.05" />
-        </label>
-
-        <label class="row">
-          <span>Inner</span>
-          <input id="safeGuideInner" type="range" min="0" max="0.2" step="0.005" value="0.10" />
-        </label>
-
-        <div class="hint">
-          Sauvegarde automatique après modification, avec un délai court.
         </div>
+
+
       </section>
     </main>
+
+  <!-- Help Overlay -->
+  <div id="helpOverlay" class="helpOverlay hidden">
+    <div class="helpModal">
+      <button id="btnCloseHelp" class="closeHelp">✕</button>
+      <h2>User Guide – Burn-in Builder</h2>
+
+      <h3>1. Add a Burn-in</h3>
+
+      <p>
+        Click a metadata item in the left column to add it to the layout.
+        It will immediately appear on the canvas and inside the "Burn-in Layout" list.
+      </p>
+
+      <h3>2. Selection & Movement</h3>
+
+      <ul>
+        <li>Click an element on the canvas to select it.</li>
+        <li>Drag it with the mouse to change its position.</li>
+        <li>Use Position X / Y sliders for precise adjustments.</li>
+      </ul>
+
+      <h3>3. Custom Template</h3>
+      <p>
+        Use the Template field to create a custom combination:
+        <code>%Scene / %Shot - %Take %Camera_#</code>
+      </p>
+      <p>
+        Any token prefixed with <strong>%</strong> will be replaced by its value
+        from the metadata JSON file.
+      </p>
+
+      <h3>4. Appearance</h3>
+      <ul>
+        <li>Font Size in points (pt).</li>
+        <li>Font selection (TTF/OTF loading supported).</li>
+        <li>Color, Opacity and Bold supported.</li>
+      </ul>
+
+      <h3>5. Keyboard Shortcuts</h3>
+      <ul>
+        <li><strong>Cmd/Ctrl + S</strong> → Save JSON.</li>
+        <li><strong>Cmd/Ctrl + Z</strong> → Undo last action.</li>
+      </ul>
+
+      <h3>6. Safe Guides</h3>
+      <p>
+        Enable guides to visualize broadcast safe margins.
+      </p>
+    </div>
   </div>
 
   <script src="app.js"></script>
@@ -141,8 +239,10 @@
       display:inline-block;
       min-width:48px;
       font-size:12px;
-      color:#9aa3b2;
+      color:#000;
       margin-left:8px;
+      text-align:right;
+      font-variant-numeric: tabular-nums;
     }
     .sliderRow{
       display:grid;
@@ -159,6 +259,114 @@
       text-align:right;
       font-variant-numeric: tabular-nums;
     }
+    .helpBtn{
+      margin-left:16px;
+      background:#000;
+      color:#fff;
+      border:1px solid #3e475a;
+      padding:6px 12px;
+      cursor:pointer;
+    }
+
+    .helpOverlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.8);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+    }
+
+    .helpOverlay.hidden{
+      display:none;
+    }
+
+    .helpModal{
+      background:#4a4a4a;
+      color:#969696;
+      width:800px;
+      max-width:90%;
+      max-height:85vh;
+      overflow-y:auto;
+      padding:30px;
+      border-radius:15px;
+      box-shadow:none;
+    }
+
+    .helpModal h2{
+      margin-top:0;
+    }
+
+    .helpModal h3{
+      margin-top:24px;
+      color:#bfbfbf;
+    }
+
+    .helpModal code{
+      background:#1c1c1c;
+      color:#fff;
+      border-radius:4px;
+    }
+
+    .closeHelp{
+      position:absolute;
+      top:20px;
+      right:30px;
+      background:none;
+      border:none;
+      color:#fff;
+      font-size:18px;
+      cursor:pointer;
+    }
+    #imageRatioMode,
+    #maskStyle {
+      width: 100%;
+      padding: 6px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #444;
+    }
+    .ratioControls{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:20px;
+      align-items:stretch;
+    }
+
+    .inlineField{
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+      gap:6px;
+      height:100%;
+    }
+
+    .sliderInline input[type="range"]{
+      width:100%;
+    }
+    .safeControls{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:20px;
+      align-items:stretch;
+    }
+
+    .safeField{
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+      gap:6px;
+      height:100%;
+    }
+
+    .safeField input[type="range"]{
+      width:100%;
+    }
+    .tokenControls.hidden{
+      display:none;
+    }
   </style>
+  </div>
 </body>
 </html>

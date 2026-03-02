@@ -34,6 +34,8 @@ const els = {
   safeGuides: document.getElementById("safeGuides"),
   safeGuideOuter: document.getElementById("safeGuideOuter"),
   safeGuideInner: document.getElementById("safeGuideInner"),
+  imageRatio: document.getElementById("imageRatio"),
+  maskOpacityVal: document.getElementById("maskOpacityVal"),
 };
 
 const ctx = els.canvas.getContext("2d");
@@ -46,14 +48,51 @@ let state = {
   safe_guides: true,
   safe_guide_outer: 0.05,
   safe_guide_inner: 0.10,
-  elements: []
+  elements: [],
+  image_ratio: 1.77,
+  image_ratio_mode: "crop", // "crop" | "fit"
+  mask_style: "bars",       // "bars" | "lines" | "bars_lines"
+  mask_opacity: 1.0
 };
+
+// --- Simple Undo Stack ---
+let undoStack = [];
+const MAX_UNDO = 50;
+
+function pushUndoState(){
+  // Deep clone only elements (lightweight history)
+  const snapshot = JSON.stringify(state.elements);
+  undoStack.push(snapshot);
+  if(undoStack.length > MAX_UNDO){
+    undoStack.shift();
+  }
+}
+
+function undoLastAction(){
+  if(undoStack.length === 0) return;
+  const last = undoStack.pop();
+  try{
+    state.elements = JSON.parse(last);
+    state.selectedIndex = null;
+    renderLayoutList();
+    render();
+    setStatus("Annulation","ok");
+  }catch(e){
+    console.warn("Undo failed", e);
+  }
+}
 
 // Map UI metadata keys to real JSON paths inside Timeline_*_stills_full_metadata.json
 // Order of lookup matters.
 const metadataKeyMap = {
   "timeline_frame": ["timeline_frame"],
   "timeline_TC": ["timeline_TC", "timeline_tc"],
+
+  "Timeline": [
+    "timeline_name",
+    "Timeline",
+    "timeline"
+  ],
 
   "Clipname": [
     "clip_name",
@@ -203,7 +242,7 @@ function compileTemplateParts(templateStr){
     const tokenKey = normalizeTokenKey(rawToken);
     if(tokenKey){
       // Accept ANY %Token and let Python resolve it later
-      parts.push({ type: "token", key: tokenKey });
+      parts.push({ type: "token", value: tokenKey });
     } else {
       parts.push({ type: "text", value: rawToken });
     }
@@ -225,7 +264,7 @@ function compileTemplateParts(templateStr){
   // --- Return object with parts and explicit token list
   const tokenKeys = merged
     .filter(p => p.type === "token")
-    .map(p => p.key);
+    .map(p => p.value);
 
   return {
     parts: merged,
@@ -243,12 +282,11 @@ function buildTextFromParts(previewMetadata, templateObj){
       out += String(p.value || "");
     }
     else if(p.type === "token"){
-      const rawValue = resolveMetadataValue(previewMetadata, p.key);
+      const rawValue = resolveMetadataValue(previewMetadata, p.value);
 
       // Special case: Good_Take = 1/true/yes → display as [*]
-      if(p.key === "Good_Take"){
-        const v = String(rawValue || "").trim().toLowerCase();
-        out += "[*]";
+      if(p.value === "Good_Take"){
+        out += "[Good_Take]";
         continue;
       }
 
@@ -256,12 +294,12 @@ function buildTextFromParts(previewMetadata, templateObj){
         out += `[${rawValue}]`;
       } else {
         // If metadata missing, show token name
-        out += `[${p.key}]`;
+        out += `[${p.value}]`;
       }
     }
   }
 
-  return out.trim();
+  return out;
 }
 
 let bgImage = null;
@@ -447,6 +485,30 @@ function bindInputs(){
   }
 
   els.btnReload.addEventListener("click", loadFromServer);
+  // --- Help Overlay ---
+  const btnHelp = document.getElementById("btnHelp");
+  const helpOverlay = document.getElementById("helpOverlay");
+  const btnCloseHelp = document.getElementById("btnCloseHelp");
+
+  if(btnHelp && helpOverlay){
+    btnHelp.addEventListener("click", ()=>{
+      helpOverlay.classList.remove("hidden");
+    });
+  }
+
+  if(btnCloseHelp && helpOverlay){
+    btnCloseHelp.addEventListener("click", ()=>{
+      helpOverlay.classList.add("hidden");
+    });
+  }
+
+  // Close with Escape key
+  document.addEventListener("keydown", (ev)=>{
+    if(ev.key === "Escape" && helpOverlay && !helpOverlay.classList.contains("hidden")){
+      helpOverlay.classList.add("hidden");
+    }
+  });
+
   els.btnSave.addEventListener("click", saveToServer);
 
   els.imgPicker.addEventListener("change", (ev) => {
@@ -462,9 +524,51 @@ function bindInputs(){
     img.src = url;
   });
 
+  if(els.imageRatio){
+    els.imageRatio.addEventListener("change", ()=>{
+      state.image_ratio = parseFloat(els.imageRatio.value) || 1.77;
+      updateCanvasRatio();
+      render();
+      scheduleSave();
+    });
+  }
+
+  // Add support for imageRatioMode select
+  if(document.getElementById("imageRatioMode")){
+    document.getElementById("imageRatioMode").addEventListener("change", (e)=>{
+      state.image_ratio_mode = e.target.value === "fit" ? "fit" : "crop";
+      render();
+      scheduleSave();
+    });
+  }
+
+  // --- Mask style (bars / lines / bars_lines) ---
+  const maskStyleSelect = document.getElementById("maskStyle");
+  if(maskStyleSelect){
+    maskStyleSelect.addEventListener("change", (e)=>{
+      state.mask_style = e.target.value;
+      render();
+      scheduleSave();
+    });
+  }
+
+  // --- Mask opacity slider ---
+  const maskOpacityInput = document.getElementById("maskOpacity");
+  if(maskOpacityInput){
+    maskOpacityInput.addEventListener("input", (e)=>{
+      state.mask_opacity = clamp(Number(e.target.value), 0, 1);
+      if(els.maskOpacityVal){
+        els.maskOpacityVal.textContent = state.mask_opacity.toFixed(2);
+      }
+      render();
+      scheduleSave();
+    });
+  }
+
   // Editing selected element position
   els.metaPosX.addEventListener("input", ()=>{
     if(state.selectedIndex == null) return;
+    pushUndoState();
     const item = state.elements[state.selectedIndex];
     item.x = clamp(parseFloat(els.metaPosX.value)/100,0,1);
     if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x);
@@ -474,6 +578,7 @@ function bindInputs(){
 
   els.metaPosY.addEventListener("input", ()=>{
     if(state.selectedIndex == null) return;
+    pushUndoState();
     const item = state.elements[state.selectedIndex];
     item.y = clamp(parseFloat(els.metaPosY.value)/100,0,1);
     if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y);
@@ -491,6 +596,7 @@ function bindInputs(){
 
   els.metaFontSize.addEventListener("input", ()=>{
     if(state.selectedIndex == null) return;
+    pushUndoState();
     const item = state.elements[state.selectedIndex];
     const sizePt = Number(els.metaFontSize.value);
     if(!Number.isNaN(sizePt)){
@@ -514,6 +620,7 @@ function bindInputs(){
   if(els.metaBold){
     els.metaBold.addEventListener("change", ()=>{
       if(state.selectedIndex == null) return;
+      pushUndoState();
       const item = state.elements[state.selectedIndex];
       item.font_weight = els.metaBold.checked ? "bold" : "normal";
       render();
@@ -534,6 +641,7 @@ function bindInputs(){
   if(els.metaTemplateCustom){
     els.metaTemplateCustom.addEventListener("input", ()=>{
       if(state.selectedIndex == null) return;
+      pushUndoState();
       const item = state.elements[state.selectedIndex];
       item.template_custom = els.metaTemplateCustom.value;
       const tplObj = compileTemplateParts(item.template_custom);
@@ -548,6 +656,7 @@ function bindInputs(){
   if(els.metaColor){
     els.metaColor.addEventListener("input", ()=>{
       if(state.selectedIndex == null) return;
+      pushUndoState();
       const item = state.elements[state.selectedIndex];
       item.color = els.metaColor.value;
       render();
@@ -593,18 +702,16 @@ function bindInputs(){
       if(withinX && withinY){
 
         // --- Select on click ---
-        state.selectedIndex = box.index;
-
-        renderLayoutList();
-        render();
+        selectElement(box.index);
 
         // --- Activate drag ---
+        pushUndoState();
         drag.active = true;
         drag.index = box.index;
 
-        // Correct offset: distance between click point and text top-left
-        drag.offsetX = px - box.x;
-        drag.offsetY = py - box.y;
+        // Snap cursor to center of element
+        drag.offsetX = 0;
+        drag.offsetY = box.h / 2;
 
         els.canvas.style.cursor = "grabbing";
 
@@ -613,6 +720,22 @@ function bindInputs(){
         return;
       }
     }
+
+    // --- Clicked outside any element → defocus ---
+    state.selectedIndex = null;
+
+    const tokenControls = document.getElementById("tokenControls");
+    if(tokenControls){
+        tokenControls.classList.add("hidden");
+    }
+
+    const customBlock = document.getElementById("customTemplateBlock");
+    if(customBlock){
+        customBlock.style.display = "none";
+    }
+
+    renderLayoutList();
+    render();
   });
 
   els.canvas.addEventListener("pointermove", (ev)=>{
@@ -696,6 +819,46 @@ function bindInputs(){
       scheduleSave();
     });
   }
+  // --- Keyboard shortcuts ---
+  document.addEventListener("keydown", (ev) => {
+    const isMac = navigator.platform.toUpperCase().includes("MAC");
+
+    const isSaveShortcut =
+      (isMac && ev.metaKey && ev.key.toLowerCase() === "s") ||
+      (!isMac && ev.ctrlKey && ev.key.toLowerCase() === "s");
+
+    const isUndoShortcut =
+      (isMac && ev.metaKey && ev.key.toLowerCase() === "z") ||
+      (!isMac && ev.ctrlKey && ev.key.toLowerCase() === "z");
+
+    if (isSaveShortcut) {
+      ev.preventDefault();
+      saveToServer();
+    }
+
+    if (isUndoShortcut) {
+      ev.preventDefault();
+      undoLastAction();
+    }
+  });
+}
+
+function updateCanvasRatio(){
+  // Canvas must always remain 1.77 full frame.
+  // Changing ratio should NOT resize the canvas.
+  // Ratio only affects masking inside render().
+
+  const baseWidth = els.canvas.parentElement.clientWidth || 1200;
+  const baseRatio = 1.77; // fixed preview base
+  const newHeight = baseWidth / baseRatio;
+
+  els.canvas.width = Math.round(baseWidth);
+  els.canvas.height = Math.round(newHeight);
+
+  els.canvas.style.width = baseWidth + "px";
+  els.canvas.style.height = newHeight + "px";
+
+  render();
 }
 
 function renderMetadataTokens(){
@@ -705,6 +868,7 @@ function renderMetadataTokens(){
 
   // ---- Custom token ----
   const customDiv = document.createElement("div");
+  customDiv.classList.add("tokenItem");
   customDiv.textContent = "Custom";
   customDiv.style.padding = "6px";
   customDiv.style.marginBottom = "6px";
@@ -714,6 +878,7 @@ function renderMetadataTokens(){
   customDiv.style.fontSize = "12px";
 
   customDiv.addEventListener("click", ()=>{
+    pushUndoState();
     const tpl = "%Scene / %Shot - %Take %Camera#";
     const tplObj = compileTemplateParts(tpl);
     state.elements.push({
@@ -743,6 +908,7 @@ function renderMetadataTokens(){
 
   metadataKeys.forEach(key => {
     const div = document.createElement("div");
+    div.classList.add("tokenItem");
     div.textContent = key;
     div.style.padding = "6px";
     div.style.marginBottom = "6px";
@@ -752,6 +918,7 @@ function renderMetadataTokens(){
     div.style.fontSize = "12px";
 
     div.addEventListener("click", ()=>{
+      pushUndoState();
       state.elements.push({
         key: key,
         x: 0.5,
@@ -776,13 +943,85 @@ function renderMetadataTokens(){
     els.metadataTokenList.appendChild(div);
   });
 }
+function selectElement(index){
+  state.selectedIndex = index;
+
+  const item = state.elements[index];
+  if(!item) return;
+
+  // Show editor panel
+  const tokenControls = document.getElementById("tokenControls");
+  if(tokenControls){
+    tokenControls.classList.remove("hidden");
+  }
+
+  const customBlock = document.getElementById("customTemplateBlock");
+  if(customBlock){
+    customBlock.style.display = item.key === "custom" ? "block" : "none";
+  }
+
+  // Sync UI fields
+  if(els.metaPosX){
+    els.metaPosX.value = ((item.x || 0.5) * 100).toFixed(1);
+  }
+  if(els.metaPosY){
+    els.metaPosY.value = ((item.y || 0.5) * 100).toFixed(1);
+  }
+  if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x || 0.5);
+  if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y || 0.5);
+
+  if(els.metaAlign) els.metaAlign.value = item.align || "center";
+  if(els.metaFontSize) els.metaFontSize.value = item.font_size_pt || 24;
+  if(els.metaColor) els.metaColor.value = item.color || "#ffffff";
+
+  if(els.metaOpacity){
+    const op = item.opacity ?? state.burnin_opacity;
+    els.metaOpacity.value = op;
+    if(els.metaOpacityVal){
+      els.metaOpacityVal.textContent = op.toFixed(2);
+    }
+  }
+
+  if(els.metaBold){
+    els.metaBold.checked = (item.font_weight === "bold");
+  }
+
+  if(els.metaFontFamily){
+    fillSelect(
+      els.metaFontFamily,
+      Array.from(new Set([...systemFontFamilies, ...loadedFontFamilies])),
+      item.font_family || state.burnin_font_family || "Arial"
+    );
+  }
+
+  if(els.metaTemplateCustom && item.key === "custom"){
+    els.metaTemplateCustom.value = item.template_custom || "";
+  }
+
+  renderLayoutList();
+  render();
+}
 
 function renderLayoutList(){
   els.burninLayoutList.innerHTML = "";
 
-  state.elements.forEach((item, index) => {
+  // --- Hide editing panel if no token is selected ---
+  const tokenControls = document.getElementById("tokenControls");
+  if(tokenControls){
+    if(state.selectedIndex == null){
+      tokenControls.classList.add("hidden");
+      const customBlock = document.getElementById("customTemplateBlock");
+        if(customBlock){
+          customBlock.style.display = "none";
+        }
+    } else {
+      tokenControls.classList.remove("hidden");
+    }
+  }
 
+  state.elements.forEach((item, index) => {
     const div = document.createElement("div");
+    div.classList.add("tokenItem");
     div.style.marginBottom = "6px";
     div.style.padding = "6px";
     div.style.cursor = "pointer";
@@ -793,62 +1032,19 @@ function renderLayoutList(){
 
     // Highlight if selected
     if(state.selectedIndex === index){
-      div.style.background = "#1f2937";
-      div.style.borderColor = "#3b82f6";
+      div.style.background = "#383838";
+      div.style.borderColor = "#006D78";
     }
 
     // Click = select for editing
     div.addEventListener("click", ()=>{
-      state.selectedIndex = index;
-
-      // Custom field block (move above position/size)
-      if(els.metaTemplateCustom){
-        if(item.key === "custom"){
-          els.metaTemplateCustom.style.display = "block";
-          els.metaTemplateCustom.value = item.template_custom || "";
-          // Ensure parts exist so Python can render from structured tokens
-          if(!item.template_parts || !item.template_parts.parts){
-            const tplObj = compileTemplateParts(item.template_custom || "");
-            item.template_parts = tplObj;
-            item.custom_tokens = tplObj.tokens;
-          }
-          // Auto-focus when selecting Custom
-          setTimeout(()=>{
-            els.metaTemplateCustom.focus();
-            els.metaTemplateCustom.select();
-          }, 0);
-        } else {
-          els.metaTemplateCustom.style.display = "none";
-        }
-      }
-
-      // Load values into UI for editing
-      els.metaPosX.value = ((item.x || 0.5) * 100).toFixed(1);
-      els.metaPosY.value = ((item.y || 0.5) * 100).toFixed(1);
-      if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x||0.5);
-      if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y||0.5);
-
-      els.metaAlign.value = item.align;
-      els.metaFontSize.value = item.font_size_pt || 24;
-
-      if(els.metaColor) els.metaColor.value = item.color || "#ffffff";
-
-      if(els.metaOpacity){
-        els.metaOpacity.value = item.opacity ?? state.burnin_opacity;
-        if(els.metaOpacityVal) els.metaOpacityVal.textContent = (item.opacity ?? state.burnin_opacity).toFixed(2);
-      }
-      if(els.metaBold) els.metaBold.checked = (item.font_weight === "bold");
-      if(els.metaFontFamily){
-        fillSelect(els.metaFontFamily, Array.from(new Set([...systemFontFamilies, ...loadedFontFamilies])), item.font_family || state.burnin_font_family || "Arial");
-      }
-
-      renderLayoutList();
-      render();
+      selectElement(index);
     });
 
     // Right click delete
     div.addEventListener("contextmenu", (e)=>{
       e.preventDefault();
+      pushUndoState();
       state.elements.splice(index,1);
       state.selectedIndex = null;
       renderLayoutList();
@@ -868,11 +1064,122 @@ function render(){
 
   lastBoxes = [];
 
-  if(bgImage){
-    drawCover(bgImage,0,0,W,H);
+  // --- Intelligent crop / fit simulation ---
+  const canvasRatio = W / H;
+  const targetRatio = state.image_ratio || 1.77;
+
+  if(state.image_ratio_mode === "fit"){
+
+    // --- FIT MODE ---
+    // Base canvas is always 1.77 full frame.
+    // The image must be fully visible (contain).
+    // The selected ratio defines a centered transparent window.
+    // Everything outside that window is masked black.
+
+    // 1) Draw image fully visible (contain inside canvas)
+    if(bgImage){
+      drawContain(bgImage, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = "#0b0d12";
+      ctx.fillRect(0,0,W,H);
+    }
+
+    // 2) Compute target ratio window centered inside 1.77 canvas
+    let cropX = 0;
+    let cropY = 0;
+    let cropW = W;
+    let cropH = H;
+
+    if(targetRatio > canvasRatio){
+      // Ratio wider → reduce height
+      cropH = W / targetRatio;
+      cropY = (H - cropH) / 2;
+    } else {
+      // Ratio taller → reduce width
+      cropW = H * targetRatio;
+      cropX = (W - cropW) / 2;
+    }
+
+    const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+
+    ctx.save();
+    ctx.globalAlpha = maskAlpha;
+
+    // --- Draw black bars only if style includes bars ---
+    if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+      ctx.fillStyle = "#000";
+
+      if(cropY > 0){
+        ctx.fillRect(0, 0, W, cropY);
+        ctx.fillRect(0, cropY + cropH, W, H - (cropY + cropH));
+      }
+
+      if(cropX > 0){
+        ctx.fillRect(0, 0, cropX, H);
+        ctx.fillRect(cropX + cropW, 0, W - (cropX + cropW), H);
+      }
+    }
+
+    // --- Draw white frame only if style includes lines ---
+    if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cropX, cropY, cropW, cropH);
+    }
+
+    ctx.restore();
+
   } else {
-    ctx.fillStyle = "#0b0d12";
-    ctx.fillRect(0,0,W,H);
+
+    // --- CROP MODE (fill canvas, crop visually) ---
+    // Keep full canvas ratio but simulate cinematic bars (previous crop behavior)
+
+    let cropX = 0;
+    let cropY = 0;
+    let cropW = W;
+    let cropH = H;
+
+    if(targetRatio > canvasRatio){
+      cropH = W / targetRatio;
+      cropY = (H - cropH) / 2;
+    } else {
+      cropW = H * targetRatio;
+      cropX = (W - cropW) / 2;
+    }
+
+    if(bgImage){
+      drawCover(bgImage,0,0,W,H);
+    } else {
+      ctx.fillStyle = "#0b0d12";
+      ctx.fillRect(0,0,W,H);
+    }
+
+    const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+
+    ctx.save();
+    ctx.globalAlpha = maskAlpha;
+
+    if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+      ctx.fillStyle = "#000";
+
+      if(cropY > 0){
+        ctx.fillRect(0,0,W,cropY);
+        ctx.fillRect(0,cropY+cropH,W,H-(cropY+cropH));
+      }
+
+      if(cropX > 0){
+        ctx.fillRect(0,0,cropX,H);
+        ctx.fillRect(cropX+cropW,0,W-(cropX+cropW),H);
+      }
+    }
+
+    if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cropX,cropY,cropW,cropH);
+    }
+
+    ctx.restore();
   }
 
   // Draw safe area guides
@@ -889,13 +1196,31 @@ function render(){
     ctx.strokeRect(innerInsetX, innerInsetY, W - 2*innerInsetX, H - 2*innerInsetY);
   }
 
+  // --- Display active ratio overlay ---
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px Arial";
+  ctx.textBaseline = "top";
+  const ratioLabel = `${state.image_ratio.toFixed(2)}:1`;
+  const labelWidth = ctx.measureText(ratioLabel).width;
+  const padding = 6;
+
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(10, 10, labelWidth + padding*2, 22);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(ratioLabel, 10 + padding, 13);
+  ctx.restore();
+
   // We need one metadata block to preview.
   // For preview, take the first marker if available.
   const previewMetadata = window.previewMetadata || {};
 
   state.elements.forEach((item, index) => {
 
-    const fontSize = item.font_size_pt || 24;
+    // Reduce preview size on canvas (visual only, does not affect saved value)
+    const fontSize = (item.font_size_pt || 24) * 0.75;
 
     const fmt = applyConditionalFormatting(previewMetadata, item);
     ctx.globalAlpha = clamp(item.opacity ?? state.burnin_opacity, 0, 1);
@@ -957,6 +1282,17 @@ function drawCover(img, dx, dy, dW, dH){
   ctx.drawImage(img, x, y, cW, cH);
 }
 
+function drawContain(img, dx, dy, dW, dH){
+  const sW = img.width;
+  const sH = img.height;
+  const scale = Math.min(dW / sW, dH / sH);
+  const cW = sW * scale;
+  const cH = sH * scale;
+  const x = dx + (dW - cW) / 2;
+  const y = dy + (dH - cH) / 2;
+  ctx.drawImage(img, x, y, cW, cH);
+}
+
 function scheduleSave(){
   if(saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(saveToServer, 300);
@@ -967,25 +1303,74 @@ async function loadFromServer(){
     const res = await fetch(`${API_BASE}/load`);
     const json = await res.json();
     if(!json.ok) throw new Error();
-    state = { ...state, ...(json.data || {}) };
+
+    const data = json.data || {};
+
+    // --- Merge flat fields first ---
+    state = { ...state, ...data };
+
+    // --- If server saved preview block, map it explicitly ---
+    if(data.preview && typeof data.preview === "object"){
+        const p = data.preview;
+
+        if(typeof p.ratio === "number"){
+            state.image_ratio = p.ratio;
+        }
+
+        if(typeof p.mode === "string"){
+            state.image_ratio_mode = p.mode;
+        }
+
+        if(typeof p.mask_style === "string"){
+            state.mask_style = p.mask_style;
+        }
+
+        if(typeof p.mask_opacity === "number"){
+            state.mask_opacity = p.mask_opacity;
+        }
+
+        if(p.safe_guides && typeof p.safe_guides === "object"){
+            state.safe_guides = !!p.safe_guides.enabled;
+        }
+    }
+
+    // Ensure defaults
+    state.image_ratio_mode = state.image_ratio_mode || "crop";
+    state.mask_style = state.mask_style || "bars";
+    state.mask_opacity = state.mask_opacity ?? 1;
     if(!Array.isArray(state.elements)) state.elements = [];
 
-    // --- Normalize custom elements so JSON ALWAYS contains explicit tokens ---
+    // --- Normalize custom elements: template_custom is the ONLY source of truth ---
     state.elements = state.elements.map(el => {
       if(el && el.key === "custom"){
-        // Ensure template_custom exists
-        if(!el.template_custom) el.template_custom = "%Scene";
+        const tpl = String(el.template_custom || "");
 
-        const tplObj = compileTemplateParts(el.template_custom);
+        // Always rebuild structured parts from template_custom
+        const tplObj = compileTemplateParts(tpl);
 
         return {
           ...el,
-          template_parts: tplObj,
-          custom_tokens: tplObj.tokens
+          template_custom: tpl,
+          template_parts: {
+            parts: Array.isArray(tplObj.parts) ? tplObj.parts : []
+          },
+          custom_tokens: Array.isArray(tplObj.tokens) ? tplObj.tokens : []
         };
       }
       return el;
     });
+
+    if(state.image_ratio && els.imageRatio){
+      els.imageRatio.value = String(state.image_ratio);
+    }
+
+    // Restore ratio mode select if present
+    const ratioModeSelect = document.getElementById("imageRatioMode");
+    if(ratioModeSelect){
+        ratioModeSelect.value = state.image_ratio_mode || "crop";
+    }
+
+    updateCanvasRatio();
 
     // Try to fetch metadata JSON for preview
     try{
@@ -1011,6 +1396,20 @@ async function loadFromServer(){
     if(els.safeGuideOuter) els.safeGuideOuter.value = state.safe_guide_outer ?? 0.05;
     if(els.safeGuideInner) els.safeGuideInner.value = state.safe_guide_inner ?? 0.10;
 
+    // Restore mask UI if controls exist
+    const maskStyleSelect = document.getElementById("maskStyle");
+    if(maskStyleSelect){
+        maskStyleSelect.value = state.mask_style || "bars";
+    }
+
+    const maskOpacityInput = document.getElementById("maskOpacity");
+    if(maskOpacityInput){
+        maskOpacityInput.value = state.mask_opacity ?? 1;
+        if(els.maskOpacityVal){
+            els.maskOpacityVal.textContent = (state.mask_opacity ?? 1).toFixed(2);
+        }
+    }
+
     renderLayoutList();
     // Ensure slider % labels are always updated on load.
     if(state.selectedIndex != null){
@@ -1019,9 +1418,9 @@ async function loadFromServer(){
       if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y || 0.5);
     }
     render();
-    setStatus("Chargé","ok");
+    setStatus("Loaded","ok");
   } catch {
-    setStatus("Serveur non disponible","bad");
+    setStatus("Server not available","bad");
   }
 }
 
@@ -1043,23 +1442,23 @@ async function saveToServer(){
       };
 
       if (el.key === "custom") {
-
-        // NEVER hardcode a default token like %Scene.
-        // Custom must reflect exactly what the user typed.
         const tpl = String(el.template_custom || "");
 
-        // Parse ANY %Token dynamically.
+        // Always rebuild parts from raw template string
         const tplObj = compileTemplateParts(tpl);
 
         base.template_custom = tpl;
 
+        // Store FULL structured parts (tokens + text)
         base.template_parts = {
-          parts: Array.isArray(tplObj.parts) ? tplObj.parts : []
+          parts: Array.isArray(tplObj.parts)
+            ? tplObj.parts.map(p => ({ ...p }))
+            : []
         };
 
-        // Extract token names without restriction.
+        // Store flat token list for Python fallback
         base.custom_tokens = Array.isArray(tplObj.tokens)
-          ? tplObj.tokens
+          ? [...tplObj.tokens]
           : [];
       }
 
@@ -1073,7 +1472,24 @@ async function saveToServer(){
       safe_guides: !!state.safe_guides,
       safe_guide_outer: Number(state.safe_guide_outer ?? 0.05),
       safe_guide_inner: Number(state.safe_guide_inner ?? 0.10),
-      elements: normalizedElements
+      elements: normalizedElements,
+
+      // Flat fields
+      image_ratio: Number(state.image_ratio ?? 1.77),
+      image_ratio_mode: state.image_ratio_mode,
+      mask_style: state.mask_style,
+      mask_opacity: Number(state.mask_opacity ?? 1),
+
+      // Explicit preview block (used by Python side)
+      preview: {
+        ratio: Number(state.image_ratio ?? 1.77),
+        mode: state.image_ratio_mode,
+        mask_style: state.mask_style,
+        mask_opacity: Number(state.mask_opacity ?? 1),
+        safe_guides: {
+          enabled: !!state.safe_guides
+        }
+      }
     };
 
     const res = await fetch(`${API_BASE}/save`,{
@@ -1084,9 +1500,9 @@ async function saveToServer(){
 
     const json = await res.json();
     if(!json.ok) throw new Error();
-    setStatus("Sauvegardé","ok");
+    setStatus("Saved","ok");
   } catch {
-    setStatus("Erreur sauvegarde","bad");
+    setStatus("Saving Error","bad");
   }
 }
 
@@ -1105,6 +1521,16 @@ async function init(){
   renderMetadataTokens();
   fillSelect(els.metaFontFamily, Array.from(new Set([...systemFontFamilies, ...loadedFontFamilies])), state.burnin_font_family || "Arial");
   await loadFromServer();
+  updateCanvasRatio();
+  // --- Load default preview image if none selected ---
+  if (!bgImage) {
+    const img = new Image();
+    img.onload = () => {
+      bgImage = img;
+      render();
+    };
+    img.src = "default_image.jpg";
+  }
   render();
 }
 

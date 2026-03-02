@@ -56,6 +56,7 @@ from datetime import datetime
 
 try:
     from PIL import Image, ImageDraw, ImageFont
+
     print("Pillow is already installed.")
 except ImportError:
     print("Pillow not found. Installing...")
@@ -147,13 +148,13 @@ class SMPTE(object):
             fr = int(round(frames - hr * frHour - mn * frMin - sc * self.fps))
 
         return (
-            str(hr).zfill(2)
-            + spacer
-            + str(mn).zfill(2)
-            + spacer
-            + str(sc).zfill(2)
-            + spacer2
-            + str(fr).zfill(2)
+                str(hr).zfill(2)
+                + spacer
+                + str(mn).zfill(2)
+                + spacer
+                + str(sc).zfill(2)
+                + spacer2
+                + str(fr).zfill(2)
         )
 
 
@@ -162,9 +163,9 @@ def detect_system_and_image_optim_installed(app_name="ImageOptim"):
 
 
 def load_settings_from_json(
-    settings: dict,
-    setting_sub_folder_name: str = "Stills_Marker_python_settings",
-    setting_file_name: str = "settings.json",
+        settings: dict,
+        setting_sub_folder_name: str = "Stills_Marker_python_settings",
+        setting_file_name: str = "settings.json",
 ):
     script_path = os.path.dirname(os.path.abspath(sys.argv[0]))
     setting_path_folder = os.path.join(script_path, setting_sub_folder_name)
@@ -197,9 +198,9 @@ def load_settings_from_json(
 
 
 def save_settings_to_json(
-    settings: dict,
-    setting_sub_folder_name: str = "Stills_Marker_python_settings",
-    setting_file_name: str = "settings.json",
+        settings: dict,
+        setting_sub_folder_name: str = "Stills_Marker_python_settings",
+        setting_file_name: str = "settings.json",
 ):
     try:
         script_path = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -592,21 +593,20 @@ def _choose_macos_font(font_path, font_size):
     return ImageFont.load_default()
 
 
-
 def burnin_3zones_top_white(
-    image_path,
-    timeline_name,
-    center_text,
-    right_text,
-    out_path=None,
-    font_path=None,
-    font_size=None,              # ignoré si auto
-    margin=18,
-    opacity=1.0,
-    auto_font=True,              # nouveau
-    font_ratio=0.015,            # nouveau: 2.2% de la largeur
-    min_font_size=18,            # nouveau
-    max_font_size=96,            # nouveau
+        image_path,
+        timeline_name,
+        center_text,
+        right_text,
+        out_path=None,
+        font_path=None,
+        font_size=None,  # ignoré si auto
+        margin=18,
+        opacity=1.0,
+        auto_font=True,  # nouveau
+        font_ratio=0.015,  # nouveau: 2.2% de la largeur
+        min_font_size=18,  # nouveau
+        max_font_size=96,  # nouveau
 ):
     base = Image.open(image_path).convert("RGBA")
     W, H = base.size
@@ -659,6 +659,7 @@ def burnin_3zones_top_white(
 
     return out_path
 
+
 # ---------------------------------------------------------------------------
 # Generic burnin driven entirely by burnin_web_settings.json
 # Each element defines:
@@ -685,67 +686,210 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
+    # ------------------------------------------------------------
+    # Read preview ratio settings from web JSON
+    # Expected structure:
+    # burnin_cfg = {
+    #   "preview": {
+    #       "ratio": 2.39,
+    #       "mode": "fit",
+    #       "mask_style": "bars_lines",
+    #       "mask_opacity": 1.0
+    #   }
+    # }
+    # ------------------------------------------------------------
+
+    preview_cfg = burnin_cfg.get("preview", {}) if isinstance(burnin_cfg, dict) else {}
+
+    try:
+        ratio = float(preview_cfg.get("ratio", 1.77))
+    except:
+        ratio = 1.77
+
+    # Normalize mode and mask_style to avoid case / whitespace mismatches
+    mode = str(preview_cfg.get("mode", "fit") or "fit").strip().lower()
+    mask_style = str(preview_cfg.get("mask_style", "bars") or "bars").strip().lower()
+
+    try:
+        mask_opacity = float(preview_cfg.get("mask_opacity", 1.0))
+    except:
+        mask_opacity = 1.0
+
+    mask_opacity = max(0.0, min(1.0, mask_opacity))
+
+    cropW = W
+    cropH = int(W / ratio)
+
+    if cropH > H:
+        cropH = H
+        cropW = int(H * ratio)
+
+    cropX = int((W - cropW) / 2)
+    cropY = int((H - cropH) / 2)
+    print("DEBUG cropY =", cropY)
+
+    # ------------------------------------------------------------
+    # MASK DRAWING (black bars + optional white frame)
+    # ------------------------------------------------------------
+
+    alpha = int(255 * mask_opacity)
+    black = (0, 0, 0, alpha)
+    white = (255, 255, 255, alpha)
+
+    # Draw directly on a dedicated mask layer
+    mask_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    mask_draw = ImageDraw.Draw(mask_layer)
+
+    # ---- BLACK BARS (letterbox / pillarbox) ----
+    if mask_style in ["bars", "bars_lines"]:
+
+        # Top / Bottom
+        if cropY > 0:
+            mask_draw.rectangle([0, 0, W, cropY], fill=black)
+            mask_draw.rectangle([0, cropY + cropH, W, H], fill=black)
+
+        # Left / Right
+        if cropX > 0:
+            mask_draw.rectangle([0, 0, cropX, H], fill=black)
+            mask_draw.rectangle([cropX + cropW, 0, W, H], fill=black)
+
+    # ---- WHITE FRAME LINES ----
+    if mask_style in ["lines", "bars_lines"]:
+        mask_draw.rectangle(
+            [cropX, cropY, cropX + cropW, cropY + cropH],
+            outline=white,
+            width=2
+        )
+
+    # Composite mask BEFORE any text burnins
+    base = Image.alpha_composite(base, mask_layer)
+
+    print("DEBUG mask applied (bars/lines composited)")
+
     full_meta = metadata_block.get("metadata", {})
     full_props = metadata_block.get("clip_properties", {})
 
     def resolve_value(key):
-        """
-        Flexible key resolver matching Timeline_1_stills_full_metadata.json structure.
-        Handles:
-        - top-level fields (timeline_frame, timeline_tc, clip_name, source_tc, etc.)
-        - metadata dict
-        - clip_properties dict
+        """Resolve a token key against `metadata_block`.
+
+        Supports:
+        - tokens with optional leading '%' (e.g. "%Scene")
+        - top-level fields (timeline_frame, timeline_tc, clip_name, source_tc, source_resolution, etc.)
+        - nested dicts: metadata, clip_properties
+        - dotted paths like "clip_properties.Start TC" or "metadata.Scene"
         - case differences
         - spaces vs underscores
-        - hashes in keys (e.g., Camera#, Camera #, Camera_#)
-        - Good_Take special rule: if value == 1/true/yes → returns "★"
+        - hashes in keys (Camera#, Camera #, Camera_#)
+        - Good Take special rule: value == "1"/true/yes -> "*"
         """
         if not key:
             return ""
 
+        # Allow keys like "%Scene"
+        key_str = str(key).strip()
+        if key_str.startswith("%"):
+            key_str = key_str[1:].strip()
+
         def normalize(s):
-            return (
+            """
+            Normalize keys for robust comparison.
+            - lower case
+            - spaces → underscore
+            - remove duplicate underscores
+            - remove underscores for loose comparison
+            """
+            base = (
                 str(s)
                 .replace(" ", "_")
                 .replace("#", "_#")
                 .lower()
                 .strip()
             )
+            while "__" in base:
+                base = base.replace("__", "_")
+            return base
 
-        target = normalize(key)
-
-        # ---- Explicit alias handling for Clipname ----
-        # Accept "Clipname", "clip_name", "%Clipname" etc.
-        if target in ["clipname", "clip_name"]:
-            val = metadata_block.get("clip_name")
-            if val:
-                return str(val)
-
-        def transform_if_good_take(k, v):
-            # Normalize key to detect Good Take reliably
-            if normalize(k) == "good_take":
+        def good_take_transform(k_norm, v):
+            if k_norm == "good_take":
                 val = str(v).strip().lower()
                 if val in ["1", "true", "yes"]:
                     return "*"
                 return ""
             return str(v)
 
-        # ---- 1. Top-level metadata_block ----
-        for k, v in metadata_block.items():
-            if normalize(k) == target and v is not None:
-                return transform_if_good_take(k, v)
+        # Helper: walk dotted path in a dict case-insensitively
+        def get_by_path_ci(root, path_parts):
+            cur = root
+            for part in path_parts:
+                if not isinstance(cur, dict):
+                    return None
+                # build case-insensitive mapping at this level
+                m = {str(k).lower(): k for k in cur.keys()}
+                hit = m.get(str(part).lower())
+                if hit is None:
+                    return None
+                cur = cur.get(hit)
+            return cur
 
-        # ---- 2. Nested metadata ----
+        full_meta = metadata_block.get("metadata", {}) if isinstance(metadata_block, dict) else {}
+        full_props = metadata_block.get("clip_properties", {}) if isinstance(metadata_block, dict) else {}
+
+        # ---- Fast alias for Clipname -> clip_name ----
+        if normalize(key_str) in ["clipname", "clip_name"]:
+            v = metadata_block.get("clip_name") if isinstance(metadata_block, dict) else None
+            return "" if v is None else str(v)
+
+        # ---- Timeline token support ----
+        if normalize(key_str) in ["timeline", "timeline_name"]:
+            v = metadata_block.get("timeline_name") if isinstance(metadata_block, dict) else None
+            return "" if v is None else str(v)
+
+        # ---- Dotted path support (e.g. "clip_properties.Start TC") ----
+        if "." in key_str:
+            parts = [p.strip() for p in key_str.split(".") if p.strip()]
+            if parts:
+                head = parts[0].lower()
+                tail = parts[1:]
+                root = None
+                if head == "metadata":
+                    root = full_meta
+                elif head == "clip_properties":
+                    root = full_props
+                else:
+                    # unknown head: try from top-level metadata_block
+                    root = metadata_block
+                    tail = parts
+
+                v = get_by_path_ci(root, tail)
+                if v is not None and str(v).strip() != "":
+                    return good_take_transform(normalize(parts[-1]), v)
+
+        target = normalize(key_str)
+        target_loose = target.replace("_", "")
+
+        # ---- 1) Top-level keys ----
+        if isinstance(metadata_block, dict):
+            for k, v in metadata_block.items():
+                k_norm = normalize(k)
+                if (k_norm == target or k_norm.replace("_", "") == target_loose) and v is not None and str(
+                        v).strip() != "":
+                    return good_take_transform(k_norm, v)
+
+        # ---- 2) Nested metadata ----
         if isinstance(full_meta, dict):
             for k, v in full_meta.items():
-                if normalize(k) == target and v is not None:
-                    return transform_if_good_take(k, v)
+                k_norm = normalize(k)
+                if (k_norm == target or k_norm.replace("_", "") == target_loose) and v is not None and str(
+                        v).strip() != "":
+                    return good_take_transform(k_norm, v)
 
-        # ---- 3. Nested clip_properties ----
+        # ---- 3) Nested clip_properties ----
         if isinstance(full_props, dict):
             for k, v in full_props.items():
-                if normalize(k) == target and v is not None:
-                    return transform_if_good_take(k, v)
+                k_norm = normalize(k)
+                if (k_norm == target or k_norm.replace("_", "") == target_loose) and v is not None and str(
+                        v).strip() != "":
+                    return good_take_transform(k_norm, v)
 
         return ""
 
@@ -754,89 +898,168 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
         if not key:
             continue
 
-        # -----------------------------
-        # CUSTOM TOKEN SUPPORT
-        # JSON must explicitly contain tokens
-        # -----------------------------
         if key == "custom":
+            # The JSON should describe the custom template as explicit parts.
+            # Supported forms:
+            # - template_parts: {"parts": [{"type":"token","value":"Scene"}, {"type":"text","value":" / "}, ...]}
+            # - template_string: "%Scene / %Shot - %Take %Camera_#" (fallback)
+            # - custom_tokens: ["Scene","Shot",... ] (fallback)
             tokens = el.get("custom_tokens") or []
             template_parts = el.get("template_parts") or {}
+            template_string = el.get("template_string") or el.get("template") or el.get("template_custom") or ""
 
             text_parts = []
 
-            # 1) Structured template_parts support (authoritative)
-            if isinstance(template_parts, dict) and isinstance(template_parts.get("parts"), list):
-                for part in template_parts.get("parts"):
-                    ptype = part.get("type")
+            def parse_template_string(s):
+                # Split into token and text parts, tokens are %Name
+                import re
+                parts_out = []
+                if not s:
+                    return parts_out
+                chunks = re.split(r"(%[A-Za-z0-9_#]+)", str(s))
+                for ch in chunks:
+                    if not ch:
+                        continue
+                    if ch.startswith("%") and len(ch) > 1:
+                        parts_out.append({"type": "token", "value": ch[1:]})
+                    else:
+                        parts_out.append({"type": "text", "value": ch})
+                return parts_out
 
+            parts_list = None
+
+            # 1) Structured template_parts (authoritative)
+            if isinstance(template_parts, dict) and isinstance(template_parts.get("parts"), list):
+                parts_list = template_parts.get("parts")
+
+            # 2) Fallback: parse template string
+            if parts_list is None and template_string:
+                parts_list = parse_template_string(template_string)
+
+            # 3) Fallback: use custom_tokens as a simple concatenation
+            if parts_list is None and tokens:
+                parts_list = [{"type": "token", "value": t} for t in tokens]
+
+            if isinstance(parts_list, list):
+                for part in parts_list:
+                    ptype = (part.get("type") or "").strip().lower()
                     if ptype == "text":
                         text_parts.append(str(part.get("value", "")))
-
                     elif ptype == "token":
-                        # Accept both "key" and legacy "value"
-                        token_key = part.get("key") or part.get("value")
+                        token_key = part.get("value")
                         if not token_key:
                             continue
 
                         token_key = str(token_key).strip()
+
+                        # Allow tokens stored as "%Scene" or "Scene"
+                        if token_key.startswith("%"):
+                            token_key = token_key[1:].strip()
+
                         token_val = resolve_value(token_key)
 
-                        if token_val:
-                            text_parts.append(str(token_val))
+                        # Always append string (even empty) to preserve template structure
+                        text_parts.append(str(token_val) if token_val is not None else "")
 
-            # 2) Fallback: custom_tokens array
-            elif tokens:
-                for token_key in tokens:
-                    token_key = str(token_key).strip()
-                    token_val = resolve_value(token_key)
-                    if token_val:
-                        text_parts.append(str(token_val))
-
-            value = "".join(text_parts).strip()
-
-            if not value:
+            value = "".join(text_parts)
+            # If value is entirely empty, skip drawing
+            if not str(value).strip():
                 continue
         else:
             value = resolve_value(key)
             if not value:
                 continue
 
-        # Accept either font_ratio or font_size_percent
-        font_ratio = float(
-            el.get("font_ratio")
-            or el.get("font_size_percent")
-            or 0.02
-        )
-        font_size = max(12, int(W * font_ratio))
+        # ---- FONT SIZE PRIORITY ----
+        # Priority:
+        # 1) explicit "font_size_pt" (web UI absolute size)
+        # 2) explicit "font_size" (absolute pixels)
+        # 3) "font_ratio" or "font_size_percent" (relative to width)
+        # 4) fallback default ratio
+
+        font_size = None
+
+        # 1) Web UI absolute point size
+        if el.get("font_size_pt") is not None:
+            try:
+                font_size = int(float(el.get("font_size_pt")))
+            except:
+                font_size = None
+
+        # 2) Absolute pixel size
+        if font_size is None and el.get("font_size") is not None:
+            try:
+                font_size = int(float(el.get("font_size")))
+            except:
+                font_size = None
+
+        # 3) Relative ratio
+        if font_size is None:
+            try:
+                font_ratio = float(
+                    el.get("font_ratio")
+                    or el.get("font_size_percent")
+                    or 0.02
+                )
+            except:
+                font_ratio = 0.02
+
+            font_size = int(W * font_ratio)
+
+        # Safety minimum
+        font_size = max(8, int(font_size))
 
         # ---- FONT + BOLD SUPPORT ----
-        font_path_cfg = burnin_cfg.get("burnin_font_path")
-        # Accept both legacy boolean "bold" and CSS-like "font_weight"
+        # JSON does not provide font_path, so we resolve fonts from system by family name
+
+        # Priority:
+        # 1) element-level font_family
+        # 2) global burnin_font_family
+        # 3) macOS fallbacks
+
+        font_family = (
+                el.get("font_family")
+                or burnin_cfg.get("burnin_font_family")
+                or ""
+        )
+
         fw = str(el.get("font_weight", "")).strip().lower()
         use_bold = bool(el.get("bold", False)) or fw == "bold"
 
-        if use_bold:
-            bold_candidates = [
-                font_path_cfg,
-                "/System/Library/Fonts/Supplemental/Helvetica Bold.ttf",
-                "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-                "/Library/Fonts/Arial Bold.ttf",
-                "/Library/Fonts/Helvetica Bold.ttf",
+        font = None
+
+        # Try to resolve font by family name on macOS
+        if font_family:
+            family_clean = str(font_family).strip()
+
+            possible_paths = []
+
+            # Common macOS font locations
+            base_dirs = [
+                "/System/Library/Fonts/",
+                "/System/Library/Fonts/Supplemental/",
+                "/Library/Fonts/",
             ]
 
-            font = None
-            for p in bold_candidates:
-                if p and os.path.exists(p):
+            for base_dir in base_dirs:
+                if use_bold:
+                    possible_paths.append(os.path.join(base_dir, f"{family_clean} Bold.ttf"))
+                    possible_paths.append(os.path.join(base_dir, f"{family_clean}-Bold.ttf"))
+                else:
+                    possible_paths.append(os.path.join(base_dir, f"{family_clean}.ttf"))
+                    possible_paths.append(os.path.join(base_dir, f"{family_clean}.ttc"))
+
+            for p in possible_paths:
+                if os.path.exists(p):
                     try:
                         font = ImageFont.truetype(p, font_size)
                         break
                     except:
                         pass
 
-            if font is None:
-                font = _choose_macos_font(font_path_cfg, font_size)
-        else:
-            font = _choose_macos_font(font_path_cfg, font_size)
+        # Final fallback
+        if font is None:
+            font = _choose_macos_font(None, font_size)
 
         opacity = max(0.0, min(1.0, float(el.get("opacity", 1.0))))
         alpha = int(255 * opacity)
@@ -875,6 +1098,25 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
 
         draw.text((x, y), value, font=font, fill=fill)
 
+    # Defensive check: ensure base and overlay are PIL Images
+    if not hasattr(overlay, "load"):
+        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+
+    print("DEBUG base type before final composite:", type(base))
+
+    # Ensure base is a valid PIL Image (it may have been overwritten as a string path)
+    if isinstance(base, str):
+        # Only attempt reopen if it is a valid file path
+        if os.path.isfile(base):
+            try:
+                base = Image.open(base).convert("RGBA")
+            except Exception as e:
+                print("ERROR: could not reopen base image:", e)
+                return image_path
+        else:
+            print("ERROR: base was unexpectedly overwritten with non-file string:", base)
+            return image_path
+
     out = Image.alpha_composite(base, overlay)
 
     if out_path is None:
@@ -911,27 +1153,35 @@ def _list_images_mtimes(folder, ext):
     return out
 
 
-def export_stills_and_get_new_files(still_album, stills_list, output_path, prefix, fmt):
-    """
-    Retourne les fichiers créés OU réécrits (mtime augmenté).
-    Gère correctement les overwrites.
-    """
-    before = _list_images_mtimes(output_path, fmt)
+def export_stills_and_get_new_files(still_album, stills_list, output_path, prefix, resolve_fmt, ext):
+    before_files = set(
+        f for f in os.listdir(output_path)
+        if f.lower().endswith("." + ext.lower())
+    )
 
-    ok = still_album.ExportStills(stills_list, output_path, prefix, fmt)
+    ok = still_album.ExportStills(stills_list, output_path, prefix, resolve_fmt)
     if not ok:
         return False, []
 
-    after = _list_images_mtimes(output_path, fmt)
+    after_files = set(
+        f for f in os.listdir(output_path)
+        if f.lower().endswith("." + ext.lower())
+    )
 
-    changed = []
-    for p, m_after in after.items():
-        m_before = before.get(p)
-        if (m_before is None) or (m_after > m_before + 1e-6):
-            changed.append(p)
+    new_files = list(after_files - before_files)
 
-    changed.sort(key=lambda p: after.get(p, 0.0))
-    return True, changed
+    # If no new filename detected, assume overwrite -> return latest modified file
+    if not new_files:
+        files = [
+            os.path.join(output_path, f)
+            for f in after_files
+        ]
+        if not files:
+            return True, []
+        latest = max(files, key=os.path.getmtime)
+        return True, [latest]
+
+    return True, [os.path.join(output_path, f) for f in new_files]
 
 
 def parse_resolution_str(res_str):
@@ -1009,13 +1259,13 @@ def get_source_resolution_and_tc_at_playhead(timeline, timeline_abs_frame, frame
     return src_res, src_tc
 
 
-
 def _first(d, keys):
     for k in keys:
         v = d.get(k)
         if v is not None and str(v).strip() != "":
             return str(v).strip()
     return ""
+
 
 # Case-insensitive version of _first
 def _first_ci(d, keys):
@@ -1051,6 +1301,7 @@ def extract_fields_at_playhead(timeline):
 
     return clipname, scene, shot, take, camera, good_take
 
+
 # ---------------------------------------------------------------------------
 # NEW: Collect all available metadata and clip properties at playhead
 def collect_full_metadata_at_playhead(timeline, timeline_abs_frame, frame_rate, drop_frame):
@@ -1074,6 +1325,7 @@ def collect_full_metadata_at_playhead(timeline, timeline_abs_frame, frame_rate, 
     )
 
     data = {
+        "timeline_name": timeline.GetName(),
         "timeline_frame": int(timeline_abs_frame),
         "timeline_tc": timeline.GetCurrentTimecode(),
         "clip_name": item.GetName(),
@@ -1201,7 +1453,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
+                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                  "MaximumSize": left_column_maximum_size}),
                         ui.Label({"Weight": 1, "ID": info_labelID}),
                     ],
                 ),
@@ -1210,7 +1463,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
+                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                  "MaximumSize": left_column_maximum_size}),
                         ui.CheckBox(
                             {
                                 "Weight": 1,
@@ -1221,9 +1475,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                             }
                         ),
                         ui.Label(
-                            {"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Style"}
+                            {"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                             "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Style"}
                         ),
-                        ui.ComboBox({"Weight": 1, "ID": rename_format_combo_boxID, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215]}),
+                        ui.ComboBox({"Weight": 1, "ID": rename_format_combo_boxID, "MinimumSize": [60, 0],
+                                     "MaximumSize": [60, 16777215]}),
                     ],
                 ),
                 ui.VGroup(
@@ -1278,16 +1534,24 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                        ui.CheckBox({"Weight": 1, "ID": export_check_boxID, "Text": "Export grabbed stills", "Checked": settings["export"], "Events": {"Toggled": True}}),
+                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                  "MaximumSize": left_column_maximum_size}),
+                        ui.CheckBox({"Weight": 1, "ID": export_check_boxID, "Text": "Export grabbed stills",
+                                     "Checked": settings["export"], "Events": {"Toggled": True}}),
 
-                        ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Format"}),
-                        ui.ComboBox({"Weight": 1, "ID": format_combo_boxID, "MinimumSize": [120, 0], "MaximumSize": [140, 16777215]}),
+                        ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                  "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Format"}),
+                        ui.ComboBox({"Weight": 1, "ID": format_combo_boxID, "MinimumSize": [120, 0],
+                                     "MaximumSize": [140, 16777215]}),
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": export_edl_markers_check_boxID, "Text": "Export EDL markers", "Checked": settings.get("export_edl_markers", False), "Events": {"Toggled": True}}),
+                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size}),
+                                ui.CheckBox(
+                                    {"Weight": 0, "ID": export_edl_markers_check_boxID, "Text": "Export EDL markers",
+                                     "Checked": settings.get("export_edl_markers", False),
+                                     "Events": {"Toggled": True}}),
                                 ui.HGap(0, 1),
                             ],
                         ),
@@ -1300,7 +1564,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size, "Text": "Export to"}),
+                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                          "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size, "Text": "Export to"}),
                                 ui.LineEdit({"Weight": 1, "ID": export_to_line_editID, "Text": settings["export_to"]}),
                                 ui.Button({"Weight": 0, "ID": browse_buttonID, "Text": "Browse", "AutoDefault": False}),
                             ],
@@ -1308,23 +1574,41 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": create_timeline_folder_check_boxID, "Text": "Create Folder with timeline name", "Checked": settings["create_export_folder_timeline_name"], "Events": {"Toggled": True}}),
-                                ui.CheckBox({"Weight": 0, "ID": create_sub_folder_check_boxID, "Text": "Create sub folder:", "Checked": settings["create_sub_folder"], "Events": {"Toggled": True}}),
-                                ui.LineEdit({"Weight": 1, "ID": sub_folder_name_line_editID, "Text": settings["sub_folder_name"], "MinimumSize": [100, 0], "MaximumSize": [100, 16777215]}),
+                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size}),
+                                ui.CheckBox({"Weight": 0, "ID": create_timeline_folder_check_boxID,
+                                             "Text": "Create Folder with timeline name",
+                                             "Checked": settings["create_export_folder_timeline_name"],
+                                             "Events": {"Toggled": True}}),
+                                ui.CheckBox(
+                                    {"Weight": 0, "ID": create_sub_folder_check_boxID, "Text": "Create sub folder:",
+                                     "Checked": settings["create_sub_folder"], "Events": {"Toggled": True}}),
+                                ui.LineEdit({"Weight": 1, "ID": sub_folder_name_line_editID,
+                                             "Text": settings["sub_folder_name"], "MinimumSize": [100, 0],
+                                             "MaximumSize": [100, 16777215]}),
                             ],
                         ),
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": resize_check_boxID, "Text": "Resize stills in %", "Checked": settings["resize_stills"], "Events": {"Toggled": True}}),
-                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True}, "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Resize to"}),
-                                ui.LineEdit({"Weight": 1, "ID": resize_line_editID, "Text": str(settings["resize_percentage"]), "MinimumSize": [40, 0], "MaximumSize": [40, 16777215], "Alignment": {"AlignHCenter": True}}),
+                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size}),
+                                ui.CheckBox({"Weight": 0, "ID": resize_check_boxID, "Text": "Resize stills in %",
+                                             "Checked": settings["resize_stills"], "Events": {"Toggled": True}}),
+                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                          "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Resize to"}),
+                                ui.LineEdit(
+                                    {"Weight": 1, "ID": resize_line_editID, "Text": str(settings["resize_percentage"]),
+                                     "MinimumSize": [40, 0], "MaximumSize": [40, 16777215],
+                                     "Alignment": {"AlignHCenter": True}}),
                                 ui.Label({"Weight": 0, "Text": "%"}),
-                                ui.CheckBox({"Weight": 0, "ID": resize_replace_check_boxID, "Text": "Replace originals", "Checked": settings["replace_original_exports"], "Events": {"Toggled": True}}),
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": remove_drx_check_boxID, "Text": "Remove DRX files", "Checked": settings["remove_drx"], "Events": {"Toggled": True}}),
+                                ui.CheckBox({"Weight": 0, "ID": resize_replace_check_boxID, "Text": "Replace originals",
+                                             "Checked": settings["replace_original_exports"],
+                                             "Events": {"Toggled": True}}),
+                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size}),
+                                ui.CheckBox({"Weight": 0, "ID": remove_drx_check_boxID, "Text": "Remove DRX files",
+                                             "Checked": settings["remove_drx"], "Events": {"Toggled": True}}),
                             ],
                         ),
                         # ui.HGroup(
@@ -1344,7 +1628,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ui.HGroup(
                             {"ID": compress_setting_boxID, "Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
+                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
+                                          "MaximumSize": left_column_maximum_size}),
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -1401,7 +1686,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         marker_count_by_color_local = markers_dict["get_marker_count_by_color"](marker_src)
 
         export_on = window_items[export_check_boxID].Checked
-        edl_on = window_items[export_edl_markers_check_boxID].Checked if export_edl_markers_check_boxID in window_items else settings.get("export_edl_markers", False)
+        edl_on = window_items[
+            export_edl_markers_check_boxID].Checked if export_edl_markers_check_boxID in window_items else settings.get(
+            "export_edl_markers", False)
 
         need_output_dir = export_on or edl_on
         start_button_enabled = (not need_output_dir) or (len(window_items[export_to_line_editID].Text.strip()) > 0)
@@ -1444,9 +1731,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         marker_count = marker_count_by_color_local.get(window_items[marker_combo_boxID].CurrentText)
         if marker_count is not None and marker_count > 0:
             marker_plural = "" if marker_count == 1 else "s"
-            window_items[info_labelID].Text = f'{marker_count} still{marker_plural} will be grabbed to the "{still_album_name}" album'
+            window_items[
+                info_labelID].Text = f'{marker_count} still{marker_plural} will be grabbed to the "{still_album_name}" album'
         else:
-            marker_color = "" if window_items[marker_combo_boxID].CurrentText == "Any" else window_items[marker_combo_boxID].CurrentText.lower() + " "
+            marker_color = "" if window_items[marker_combo_boxID].CurrentText == "Any" else window_items[
+                                                                                                marker_combo_boxID].CurrentText.lower() + " "
             window_items[info_labelID].Text = f"No {marker_color}markers found, no stills will be grabbed"
             start_button_enabled = False
 
@@ -1615,7 +1904,8 @@ if markers:
     for marker_frame in marker_to_delete:
         del markers_in_out[marker_frame]
 
-    marker_count_by_color = markers_dict["get_marker_count_by_color"](markers if not settings["restrict_to_in_out"] else markers_in_out)
+    marker_count_by_color = markers_dict["get_marker_count_by_color"](
+        markers if not settings["restrict_to_in_out"] else markers_in_out)
     window = create_window(marker_count_by_color, markers, still_album_name, timeline_settings)
     window.Show()
     grab_stills = dispatcher.RunLoop()
@@ -1631,9 +1921,8 @@ if markers:
 
         # Timeline resolution override (only makes sense for disk export)
         if settings.get("resize_stills", False) \
-           and int(settings.get("resize_percentage", 100)) > 100 \
-           and settings.get("export", False):
-
+                and int(settings.get("resize_percentage", 100)) > 100 \
+                and settings.get("export", False):
             tres, tres2, pres, pres2 = timeline_resolution_override(
                 project,
                 timeline,
@@ -1641,7 +1930,6 @@ if markers:
                 settings["resize_percentage"]
             )
             print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
-
 
         # -------------------------------------------------
         # Disk export path
@@ -1704,13 +1992,12 @@ if grab_stills:
     total_markers = len([
         mf for mf in marker_frames
         if markers_src.get(mf)
-        and (settings["markers"] == "Any" or settings["markers"] == markers_src.get(mf)["color"])
+           and (settings["markers"] == "Any" or settings["markers"] == markers_src.get(mf)["color"])
     ])
     processed_count = 0
 
-    # --- ALWAYS grab stills into gallery ---
-    stills_to_export = []
 
+    # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
     for marker_frame in marker_frames:
         marker = markers_src.get(marker_frame)
         if not marker:
@@ -1725,8 +2012,6 @@ if grab_stills:
         grabbed = timeline.GrabStill()
         if not grabbed:
             raise Exception(f"Couldn't grab still at {tc}")
-
-        stills_to_export.append((grabbed, marker_offset_frame))
 
         # Collect metadata immediately after grab and write JSON incrementally
         meta_block = collect_full_metadata_at_playhead(
@@ -1756,6 +2041,7 @@ if grab_stills:
         #     progress_items["ProgressLabel"].Text = f"Processing {processed_count}/{total_markers} ({percent}%)"
         #     dispatcher.ProcessEvents()
 
+        new_label = None
         if settings.get("rename_with_meta", False):
             meta_block = metadata_by_frame.get(str(marker_offset_frame), {})
 
@@ -1765,7 +2051,8 @@ if grab_stills:
             scene = full_meta.get("Scene") or full_meta.get("Scene Number") or full_props.get("Scene") or ""
             shot = full_meta.get("Shot") or full_meta.get("Shot Number") or full_props.get("Shot") or ""
             take = full_meta.get("Take") or full_meta.get("Take Number") or full_props.get("Take") or ""
-            camera = full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get("Camera Number") or full_props.get("Camera") or ""
+            camera = full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get(
+                "Camera Number") or full_props.get("Camera") or ""
             clipname = meta_block.get("clip_name", "")
 
             scene = str(scene).strip()
@@ -1792,137 +2079,64 @@ if grab_stills:
             if new_label:
                 still_album.SetLabel(grabbed, new_label)
 
-# --- DISK EXPORT (optional) ---
-if settings.get("export", False) and stills_to_export:
-    prefix = ""
-    reselect_album(still_album, gallery)
-
-    if settings.get("burnin", False):
-        # Export un still à la fois pour burnin fiable
-        for grabbed, marker_offset_frame in stills_to_export:
-
-            # repositionner le playhead AVANT de lire les métadonnées
-            tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
-            timeline.SetCurrentTimecode(tc)
+        # -------------------------------------------------
+        # SINGLE-PASS DISK EXPORT (no second traversal)
+        # -------------------------------------------------
+        if settings.get("export", False):
+            prefix = ""
+            reselect_album(still_album, gallery)
             ok, new_files = export_stills_and_get_new_files(
                 still_album=still_album,
                 stills_list=[grabbed],
                 output_path=output_path,
                 prefix=prefix,
-                fmt=settings["format"],
+                resolve_fmt=settings["format"],
+                ext=settings["format"],
             )
-            if not ok or not new_files:
-                continue
 
-            for img_path in new_files:
-                # --- FULL METADATA FROM PRECOLLECTED DICT ---
-                meta_block = metadata_by_frame.get(str(marker_offset_frame), {})
+            print("DEBUG ExportStills OK:", ok)
+            print("DEBUG new_files:", new_files)
 
-                src_res_txt = meta_block.get("source_resolution", "")
-                src_tc_txt = meta_block.get("source_tc", "")
-                clipname = meta_block.get("clip_name", "")
+            if ok and new_files:
+                for img_path in new_files:
+                    meta_block = metadata_by_frame.get(str(marker_offset_frame), {}) or {}
 
-                full_meta = meta_block.get("metadata", {})
-                full_props = meta_block.get("clip_properties", {})
+                    # Ensure timeline_name is always available for burnin tokens
+                    if "timeline_name" not in meta_block or not meta_block.get("timeline_name"):
+                        meta_block["timeline_name"] = timeline.GetName()
 
-                scene = full_meta.get("Scene") or full_props.get("Scene") or ""
-                shot = full_meta.get("Shot") or full_props.get("Shot") or ""
-                take = full_meta.get("Take") or full_props.get("Take") or ""
-                camera = full_meta.get("Camera") or full_props.get("Camera") or ""
-                good_take = full_meta.get("Good Take") or full_props.get("Good Take") or ""
+                    if settings.get("burnin", False):
+                        burnin_web_settings = load_burnin_web_settings()
+                        burnin_from_web_json(
+                            image_path=img_path,
+                            metadata_block=meta_block,
+                            burnin_cfg=burnin_web_settings,
+                            out_path=img_path
+                        )
 
-                star = "*" if str(good_take).strip().lower() in ["1","true","yes"] else ""
-
-                center_parts = []
-                if src_res_txt:
-                    center_parts.append(f"{src_res_txt} px")
-                center_parts.append(clipname)
-                if src_tc_txt:
-                    center_parts.append(src_tc_txt)
-
-                center_txt = " - ".join(p for p in center_parts if p)
-                right_txt = f"{scene}/{shot}-{take} {camera} {star}".strip()
-
-                burnin_web_settings = load_burnin_web_settings()
-                burnin_from_web_json(
-                    image_path=img_path,
-                    metadata_block=meta_block,
-                    burnin_cfg=burnin_web_settings,
-                    out_path=img_path
-                )
-
-                # Register filename in JSON
-                meta_block = metadata_by_frame.get(str(marker_offset_frame))
-                if meta_block is not None:
+                    # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)
 
-    else:
-        # Batch export sans burnin
-        assert still_album.ExportStills(
-            [s for s, _ in stills_to_export],
-            output_path,
-            prefix,
-            settings["format"],
-        ), "ExportStills failed"
+# --- WRITE FULL METADATA JSON (post-grab, complete data) ---
+try:
+    metadata_json_path = os.path.join(
+        output_path,
+        f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
+    )
+    with open(metadata_json_path, "w", encoding="utf-8") as jf:
+        json.dump(metadata_json, jf, indent=4)
+except Exception as e:
+    print(f"Could not write metadata JSON: {e}")
 
-        # Register exported files in JSON
-        exported_files = [
-            f for f in os.listdir(output_path)
-            if f.lower().endswith("." + settings["format"].lower())
-        ]
+# --- FINAL DRX CLEANUP (post-export, reliable) ---
+if settings.get("remove_drx", False) and settings.get("export", False):
+    if output_path and os.path.isdir(output_path):
+        for root, _, files in os.walk(output_path):
+            for fn in files:
+                if fn.lower().endswith(".drx"):
+                    try:
+                        os.remove(os.path.join(root, fn))
+                    except Exception as e:
+                        print(f"Could not remove DRX {fn}: {e}")
 
-        for (grabbed, marker_offset_frame), filename in zip(stills_to_export, sorted(exported_files)):
-            meta_block = metadata_by_frame.get(str(marker_offset_frame))
-            if meta_block is not None:
-                meta_block["exported_filename"] = filename
-
-        # Resize stills (applies to both modes, AFTER export)
-        if settings.get("resize_stills", False):
-            images = [
-                os.path.join(output_path, image)
-                for image in os.listdir(output_path)
-                if image.lower().endswith("." + settings["format"].lower())
-            ]
-            for image in images:
-                resize_image(image, int(settings["resize_percentage"]), settings["replace_original_exports"])
-
-            if int(settings.get("resize_percentage", 100)) > 100:
-                timeline_resolution_override(project, timeline, resolution_tuple, 100)
-                for image in images:
-                    resize_image(image, 100, settings["replace_original_exports"], original_size=resolution_tuple[:2])
-
-        # Compress (jpg only)
-        if settings.get("compress", False):
-            if detect_system_and_image_optim_installed() and settings.get("format") == "jpg":
-                try:
-                    imageoptim_command = f'open -a ImageOptim "{output_path}"/*.jpg'
-                    subprocess.run(imageoptim_command, shell=True)
-                except:
-                    print("Couldn't open ImageOptim.app")
-                    print("Make sure ImageOptim.app is installed and try again.")
-            else:
-                print("Couldn't find ImageOptim.app in applications folder (or format not jpg).")
-
-    # --- WRITE FULL METADATA JSON (post-grab, complete data) ---
-    try:
-        metadata_json_path = os.path.join(
-            output_path,
-            f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
-        )
-        with open(metadata_json_path, "w", encoding="utf-8") as jf:
-            json.dump(metadata_json, jf, indent=4)
-    except Exception as e:
-        print(f"Could not write metadata JSON: {e}")
-
-    # --- FINAL DRX CLEANUP (post-export, reliable) ---
-    if settings.get("remove_drx", False) and settings.get("export", False):
-        if output_path and os.path.isdir(output_path):
-            for root, _, files in os.walk(output_path):
-                for fn in files:
-                    if fn.lower().endswith(".drx"):
-                        try:
-                            os.remove(os.path.join(root, fn))
-                        except Exception as e:
-                            print(f"Could not remove DRX {fn}: {e}")
-
-    restore_page(initial_state)
+restore_page(initial_state)
