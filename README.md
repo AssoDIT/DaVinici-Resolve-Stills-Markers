@@ -1,5 +1,7 @@
 # Resolve Stills Markers Exporter
 
+![Resolve plugin Window](Stills_Marker_python_settings/burnin_ui/examples/Resolve_plugin_Window.png)
+
 ## Overview
 
 Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration plugin that allows you to:
