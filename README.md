@@ -83,6 +83,8 @@ Workspace → Workflow Integration
 
 ## Burn-In Web Editor
 
+![Burn In Web Editor capture](/burnin_ui/examples/Burnin Preset UI in web server.png)
+
 The plugin includes a web-based burn-in layout editor with:
 
 - Drag & drop burn-in elements
