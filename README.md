@@ -83,7 +83,7 @@ Workspace → Workflow Integration
 
 ## Burn-In Web Editor
 
-![Burn In Web Editor capture](/burnin_ui/examples/Burnin Preset UI in web server.png)
+![Burn In Web Editor capture](Stills_Marker_python_settings/burnin_ui/examples/Burnin_Preset_UI_in_web_server.png)
 
 The plugin includes a web-based burn-in layout editor with:
 
