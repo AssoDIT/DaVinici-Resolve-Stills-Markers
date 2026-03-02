@@ -21,7 +21,7 @@ Converted to python from lua script created by Roger Magnusson.
    import sys
    print(sys.version)
     ```
-- you can read your version of python : "3.13.2 (v3.13.2:4f8bb3947cf, Feb  4 2025, 11:51:10)" 
+- you can read your version of python : "3.13.2 (v3.13.2:4f8bb3947cf, Feb  4 2025, 11:51:10)"
 
 
 2. **Open Terminal**: You can find it in Applications > Utilities.
@@ -30,7 +30,7 @@ Converted to python from lua script created by Roger Magnusson.
    ```bash
    python3 -m ensurepip --upgrade
     ```
-   
+
 4. **Install Pillow** adapt to your actual python3 version ("python3.13" for instance):
    ```bash
    python3 -m pip install --upgrade pip
@@ -38,14 +38,14 @@ Converted to python from lua script created by Roger Magnusson.
    ```
 #### Installation on Windows
 
-1. **Open Command Prompt**: You can find it in Start > Windows System > Command Prompt. 
+1. **Open Command Prompt**: You can find it in Start > Windows System > Command Prompt.
     **Note**: If you are using Windows 10, you can also use the Windows PowerShell, which is a more powerful tool.
 
 3. **Ensure pip is installed**:
     ```bash
     py -m ensurepip --upgrade
     ```
-   
+
 3. **Install Pillow**:
     ```bash
      py -m pip install --upgrade pip
@@ -87,5 +87,274 @@ only if  "Use labels on still export" is checked in Resolve's gallery still albu
 - Export stills to a folder with the same name as the timeline.
 
 - Compress exported images with ImageOptim if installed.
+# Resolve Stills Markers Exporter
 
+## Description
+Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration script that allows you to:
 
+- Grab stills from timeline markers
+- Export stills to disk
+- Rename stills using full clip metadata
+- Apply advanced burn‑ins driven by a JSON layout
+- Apply cinematic blanking (aspect ratio mask, bars, frame, or both)
+- Export marker-based EDL files
+- Remove DRX files automatically
+- Optionally compress exported images
+
+Originally converted to Python from a Lua script created by Roger Magnusson, this version has been significantly extended with a web-based burn‑in layout builder and metadata-driven rendering pipeline.
+
+---
+
+## Requirements
+
+- DaVinci Resolve 18 or higher
+- Python 3.6 or higher
+- Pillow (Python Imaging Library)
+
+**Note:** The script will attempt to install Pillow automatically if not found.
+
+---
+
+# Pillow Installation Guide
+
+## Installation on macOS
+
+### 1. Find your Resolve Python version
+
+- Open DaVinci Resolve Studio
+- Open the Console (Workspace > Console)
+- Select the Py3 tab
+- Enter:
+
+```python
+import sys
+print(sys.version)
+```
+
+Example output:
+
+```
+3.13.2 (v3.13.2:4f8bb3947cf, Feb  4 2025, 11:51:10)
+```
+
+### 2. Open Terminal
+
+Applications > Utilities > Terminal
+
+### 3. Ensure pip is installed
+
+```bash
+python3 -m ensurepip --upgrade
+```
+
+### 4. Install Pillow
+
+Adapt to your Python version if necessary (example shown below):
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install --upgrade Pillow
+```
+
+---
+
+## Installation on Windows
+
+### 1. Open Command Prompt
+
+Start > Windows System > Command Prompt
+
+PowerShell can also be used.
+
+### 2. Ensure pip is installed
+
+```bash
+py -m ensurepip --upgrade
+```
+
+### 3. Install Pillow
+
+```bash
+py -m pip install --upgrade pip
+py -m pip install --upgrade Pillow
+```
+
+---
+
+# Installation in DaVinci Resolve
+
+Copy the script into the "Workflow Integration Plugins" folder (create it if needed), then restart Resolve.
+
+### macOS
+
+/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/
+
+### Windows
+
+%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\
+
+Launch from:
+
+Workspace → Workflow Integration
+
+---
+
+# Web Burn‑In Builder (JSON Driven)
+
+This version includes a web-based Burn‑In Layout Builder.
+
+It allows you to:
+
+- Visually place burn‑in elements
+- Drag and reposition tokens on canvas
+- Control font size (pt), font family, weight, color and opacity
+- Build custom templates using metadata tokens
+- Preview cinematic blanking (ratio mask)
+- Configure safe guides
+- Save configuration directly to JSON
+
+All burn‑in configuration is stored in:
+
+Stills_Marker_python_settings/burnin_web_settings.json
+
+---
+
+# Starting the JSON Server
+
+The Web UI communicates with a local Python server.
+
+From the plugin folder, launch:
+
+```bash
+python3 server_save_burnin_json.py
+```
+
+If the server is running, the UI will show “Connected”.
+
+If not running, it will show “Disconnected”.
+
+---
+
+# Metadata Token System
+
+Any available metadata field can be used as a burn‑in token.
+
+Examples:
+
+%Scene
+%Shot
+%Take
+%Good_Take
+%Resolution
+%Reel_Name
+%timeline_TC
+%Clipname
+%Timeline
+
+---
+
+# Custom Templates
+
+Custom templates allow composition of multiple tokens and text.
+
+Example:
+
+%Scene / %Shot - %Take %Good_Take
+
+If Good_Take = "1", it is automatically rendered as "*".
+
+Spaces and formatting are preserved exactly as written.
+
+---
+
+# Cinematic Blanking System
+
+Supported aspect ratios:
+
+1.33
+1.66
+1.77
+1.85
+2.00
+2.35
+2.39
+2.40
+
+Mask styles:
+
+- Bars
+- Frame (white lines)
+- Bars + Frame
+
+Mask opacity is fully respected during final export.
+
+---
+
+# Rendering Pipeline
+
+1. Grab still from Resolve
+2. Export still to disk
+3. Load image with Pillow
+4. Apply blanking mask (if enabled)
+5. Render burn‑in elements from JSON layout
+6. Save final image
+7. Optional compression
+
+---
+
+# EDL Export
+
+Markers can be exported as:
+
+TimelineName_stillsMarkers.edl
+
+Marker color filtering is supported.
+
+---
+
+# Added Features
+
+- Rename stills using Scene / Shot / Take / Camera metadata
+- JSON-driven burn‑in layout
+- Custom template engine
+- Automatic star replacement for Good_Take
+- Timeline token support
+- Cinematic blanking system
+- Per-element color and opacity
+- Drag & drop layout editor
+- Undo (Cmd/Ctrl + Z)
+- Save shortcut (Cmd/Ctrl + S)
+- Remove .drx files automatically
+- Resize exported stills
+- Restrict grab between In/Out
+- EDL export from markers
+- Optional ImageOptim compression
+
+---
+
+# Known Limitations
+
+DaVinci Resolve does not allow GUI locking during script execution.
+
+If the user opens:
+
+- Project Settings
+- Any modal dialog
+- If automatic backup triggers
+
+The script may fail due to Resolve API limitations.
+
+---
+
+# Recommended Workflow
+
+1. Start DaVinci Resolve
+2. Launch Workflow Integration script
+3. Start the JSON server
+4. Configure burn‑ins in Web UI
+5. Grab stills
+6. Export
+
+---
+
+This tool is designed for professional post-production workflows requiring structured, metadata-driven still exports with fully customizable burn‑ins.
