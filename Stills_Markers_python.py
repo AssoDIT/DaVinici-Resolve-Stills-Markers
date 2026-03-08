@@ -406,6 +406,48 @@ def resize_image(input_path, percentage, delete_original, original_size=None):
         else:
             print("bypass downsizing, percentage must be between 1 and 100.")
 
+def fit_image_into_black_canvas(input_path, canvas_width=1920, canvas_height=1080):
+    """
+    Places the exported image into a fixed black canvas while preserving aspect ratio.
+    The image is resized to fit entirely inside the target canvas and centered.
+    The result overwrites the original file.
+    """
+    try:
+        with Image.open(input_path) as img:
+            src = img.convert("RGB")
+            src_w, src_h = src.size
+
+            if src_w <= 0 or src_h <= 0:
+                return input_path
+
+            src_ratio = float(src_w) / float(src_h)
+            canvas_ratio = float(canvas_width) / float(canvas_height)
+
+            if src_ratio > canvas_ratio:
+                new_w = canvas_width
+                new_h = int(round(canvas_width / src_ratio))
+            else:
+                new_h = canvas_height
+                new_w = int(round(canvas_height * src_ratio))
+
+            resized = src.resize((new_w, new_h), Image.LANCZOS)
+            canvas = Image.new("RGB", (int(canvas_width), int(canvas_height)), (0, 0, 0))
+
+            x = int((canvas_width - new_w) / 2)
+            y = int((canvas_height - new_h) / 2)
+            canvas.paste(resized, (x, y))
+
+            ext = os.path.splitext(input_path)[1].lower()
+            if ext in [".jpg", ".jpeg"]:
+                canvas.save(input_path, quality=95)
+            else:
+                canvas.save(input_path)
+
+    except Exception as e:
+        print(f"Could not fit image into black canvas: {e}")
+
+    return input_path
+
 
 def get_all_mediapool_bins(parent_bin):
     bins_list = [b for b in parent_bin.GetSubFolderList()]
@@ -523,7 +565,8 @@ dict_settings = {
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
     "rename_scene_shot_separator": "/",
-    "burnin": False
+    "burnin": False,
+    "fit_to_1920_canvas": False
 }
 
 
@@ -1398,6 +1441,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     burnin_setting_boxID = "BurninSettings"
     burnin_check_boxID = "BurninCheckBox"
+    fit_canvas_check_boxID = "FitCanvasCheckBox"
 
     compress_setting_boxID = "CompressSettings"
     compress_check_boxID = "CompressCheckBox"
@@ -1651,8 +1695,24 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ui.HGroup(
                             {"ID": compress_setting_boxID, "Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size}),
+                                ui.Label({
+                                    "Weight": 0,
+                                    "MinimumSize": left_column_minimum_size,
+                                    "MaximumSize": left_column_maximum_size
+                                }),
+
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": fit_canvas_check_boxID,
+                                        "Text": "Fit into FHD canvas",
+                                        "Checked": settings.get("fit_to_1920_canvas", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+
+                                ui.HGap(12),
+
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -1662,7 +1722,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
+
                                 ui.HGap(12),
+
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -1672,6 +1734,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
+
                                 ui.HGap(0, 1),
                             ],
                         )
@@ -1738,8 +1801,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         window_items[remove_drx_check_boxID].Enabled = export_on
 
-        # Burnins: indépendant de Compress, mais logique = uniquement utile si export fichier
+        # Burnins and fixed output canvas are only useful when exporting files
         window_items[burnin_check_boxID].Enabled = export_on
+        window_items[fit_canvas_check_boxID].Enabled = export_on
 
         # Compress: uniquement si export fichier + jpg + ImageOptim installé
         compress_enabled = export_on and (settings["format"] == "jpg") and detect_system_and_image_optim_installed()
@@ -1835,6 +1899,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         settings["compress"] = window_items[compress_check_boxID].Checked
         settings["burnin"] = window_items[burnin_check_boxID].Checked
+        settings["fit_to_1920_canvas"] = window_items[fit_canvas_check_boxID].Checked
 
         save_settings_to_json(settings)
         dispatcher.ExitLoop(True)
@@ -1873,6 +1938,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[format_combo_boxID].CurrentIndexChanged = OnFormatComboBoxCurrentIndexChanged
     main_window.On[compress_check_boxID].Toggled = OnGenericToggled
     main_window.On[burnin_check_boxID].Toggled = OnGenericToggled
+    main_window.On[fit_canvas_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[cancel_buttonID].Clicked = OnCancelButtonClicked
     main_window.On[start_buttonID].Clicked = OnStartButtonClicked
@@ -2127,6 +2193,10 @@ if grab_stills:
                     # Ensure timeline_name is always available for burnin tokens
                     if "timeline_name" not in meta_block or not meta_block.get("timeline_name"):
                         meta_block["timeline_name"] = timeline.GetName()
+
+                    # Optional fixed black canvas normalization BEFORE burnin
+                    if settings.get("fit_to_1920_canvas", False):
+                        fit_image_into_black_canvas(img_path, 1920, 1080)
 
                     if settings.get("burnin", False):
                         burnin_web_settings = load_burnin_web_settings()
