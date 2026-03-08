@@ -214,6 +214,29 @@ def save_settings_to_json(
 
 
 # --------------------------------------------------------------------------
+# Helper: Delete metadata JSON file
+def delete_metadata_json(output_path, timeline_name):
+    """
+    Remove the metadata JSON file generated during export.
+    Safe: does nothing if file does not exist.
+    """
+    try:
+        if not output_path:
+            return
+
+        json_path = os.path.join(
+            output_path,
+            f"{timeline_name}_stills_metadata.json".replace(" ", "_")
+        )
+
+        if os.path.exists(json_path):
+            os.remove(json_path)
+            print(f"Metadata JSON removed: {json_path}")
+    except Exception as e:
+        print(f"Could not remove metadata JSON: {e}")
+
+
+# --------------------------------------------------------------------------
 # Load burnin config from web UI if present
 def load_burnin_web_settings(setting_sub_folder_name="Stills_Marker_python_settings",
                              burnin_file_name="burnin_web_settings.json"):
@@ -2138,5 +2161,9 @@ if settings.get("remove_drx", False) and settings.get("export", False):
                         os.remove(os.path.join(root, fn))
                     except Exception as e:
                         print(f"Could not remove DRX {fn}: {e}")
+
+# --- OPTIONAL CLEANUP: remove metadata JSON after processing ---
+if settings.get("export", False):
+    delete_metadata_json(output_path, timeline.GetName())
 
 restore_page(initial_state)
