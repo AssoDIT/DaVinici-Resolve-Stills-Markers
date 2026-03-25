@@ -27,13 +27,11 @@ const els = {
   opacityVal: document.getElementById("opacityVal"),
 
   btnReload: document.getElementById("btnReload"),
-  btnSave: document.getElementById("btnSave"),
 
   canvas: document.getElementById("previewCanvas"),
 
-  safeGuides: document.getElementById("safeGuides"),
-  safeGuideOuter: document.getElementById("safeGuideOuter"),
-  safeGuideInner: document.getElementById("safeGuideInner"),
+  metaBgOpacity: document.getElementById("metaBgOpacity"),
+  metaBgOpacityVal: document.getElementById("metaBgOpacityVal"),
   imageRatio: document.getElementById("imageRatio"),
   maskOpacityVal: document.getElementById("maskOpacityVal"),
 };
@@ -45,9 +43,6 @@ let state = {
   burnin_font_path: "",
   burnin_opacity: 0.5,
   burnin_font_family: "Arial",
-  safe_guides: true,
-  safe_guide_outer: 0.05,
-  safe_guide_inner: 0.10,
   elements: [],
   image_ratio: 1.77,
   image_ratio_mode: "crop", // "crop" | "fit"
@@ -55,8 +50,9 @@ let state = {
   mask_opacity: 1.0
 };
 
-// --- Simple Undo Stack ---
+// --- Undo / Redo Stacks ---
 let undoStack = [];
+let redoStack = [];
 const MAX_UNDO = 50;
 
 function pushUndoState(){
@@ -66,10 +62,14 @@ function pushUndoState(){
   if(undoStack.length > MAX_UNDO){
     undoStack.shift();
   }
+  // Any new action clears the redo stack
+  redoStack = [];
 }
 
 function undoLastAction(){
   if(undoStack.length === 0) return;
+  // Save current state to redo stack before reverting
+  redoStack.push(JSON.stringify(state.elements));
   const last = undoStack.pop();
   try{
     state.elements = JSON.parse(last);
@@ -79,6 +79,22 @@ function undoLastAction(){
     setStatus("Annulation","ok");
   }catch(e){
     console.warn("Undo failed", e);
+  }
+}
+
+function redoLastAction(){
+  if(redoStack.length === 0) return;
+  // Save current state to undo stack before re-applying
+  undoStack.push(JSON.stringify(state.elements));
+  const next = redoStack.pop();
+  try{
+    state.elements = JSON.parse(next);
+    state.selectedIndex = null;
+    renderLayoutList();
+    render();
+    setStatus("Rétabli","ok");
+  }catch(e){
+    console.warn("Redo failed", e);
   }
 }
 
@@ -204,9 +220,181 @@ const metadataKeyMap = {
   "Comments": [
     "clip_properties.Comments",
     "Comments"
+  ],
+
+  "Angle": [
+    "metadata.Angle",
+    "clip_properties.Angle",
+    "Angle"
+  ],
+
+  "Move": [
+    "metadata.Move",
+    "clip_properties.Move",
+    "Move"
+  ],
+
+  "Keywords": [
+    "metadata.Keywords",
+    "clip_properties.Keywords",
+    "Keywords"
+  ],
+
+  "Shoot_Day": [
+    "metadata.Shoot Day",
+    "clip_properties.Shoot Day",
+    "Shoot_Day"
+  ],
+
+  "Date_Recorded": [
+    "metadata.Date Recorded",
+    "clip_properties.Date Recorded",
+    "Date_Recorded"
+  ],
+
+  "Location": [
+    "metadata.Location",
+    "clip_properties.Location",
+    "Location"
+  ],
+
+  "Setup": [
+    "metadata.Setup",
+    "clip_properties.Setup",
+    "Setup"
+  ],
+
+  "Camera_Type": [
+    "metadata.Cam Type",
+    "clip_properties.Cam Type",
+    "Camera_Type"
+  ],
+
+  "Camera_Serial": [
+    "metadata.Cam Serial #",
+    "clip_properties.Cam Serial #",
+    "Camera_Serial"
+  ],
+
+  "Camera_ID": [
+    "metadata.Cam ID",
+    "clip_properties.Cam ID",
+    "Camera_ID"
+  ],
+
+  "Camera_Notes": [
+    "metadata.Cam Notes",
+    "clip_properties.Cam Notes",
+    "Camera_Notes"
+  ],
+
+  "ISO": [
+    "metadata.ISO",
+    "clip_properties.ISO",
+    "ISO"
+  ],
+
+  "White_Balance": [
+    "metadata.White Point",
+    "clip_properties.White Point",
+    "White_Balance"
+  ],
+
+  "White_Balance_Tint": [
+    "metadata.White Balance Tint",
+    "clip_properties.White Balance Tint",
+    "White_Balance_Tint"
+  ],
+
+  "Lens_Type": [
+    "metadata.Lens Type",
+    "clip_properties.Lens Type",
+    "Lens_Type"
+  ],
+
+  "Lens_Notes": [
+    "metadata.Lens Notes",
+    "clip_properties.Lens Notes",
+    "Lens_Notes"
+  ],
+
+  "Aperture": [
+    "metadata.Cam Aperture",
+    "clip_properties.Cam Aperture",
+    "Aperture"
+  ],
+
+  "Focal_Length": [
+    "metadata.Focal Point (mm)",
+    "clip_properties.Focal Point (mm)",
+    "Focal_Length"
+  ],
+
+  "Filter": [
+    "metadata.Filter",
+    "clip_properties.Filter",
+    "Filter"
+  ],
+
+  "LUT_Used": [
+    "metadata.LUT Used",
+    "clip_properties.LUT Used",
+    "LUT_Used"
+  ],
+
+  "Director": [
+    "metadata.Director",
+    "clip_properties.Director",
+    "Director"
+  ],
+
+  "DOP": [
+    "metadata.DOP",
+    "clip_properties.DOP",
+    "DOP"
+  ],
+
+  "Production_Name": [
+    "metadata.Production Name",
+    "clip_properties.Production Name",
+    "Production_Name"
+  ],
+
+  "Record_TC": [
+    "record_tc",
+    "Record_TC"
+  ],
+
+  "Date": [
+    "metadata.Date",
+    "clip_properties.Date",
+    "Date"
+  ],
+
+  "Project_Name": [
+    "project_name",
+    "Project_Name"
+  ],
+
+  "Marker_Name": [
+    "marker_name",
+    "Marker_Name"
+  ],
+
+  "Marker_Notes": [
+    "marker_notes",
+    "Marker_Notes"
   ]
 };
 let metadataKeys = Object.keys(metadataKeyMap);
+
+// Keys shown at top of the token list without "show more"
+const FAVORITES = [
+  "Timeline", "Clipname", "Camera_#", "Scene", "Shot", "Take",
+  "Start_TC", "End_TC", "Shoot_Day", "ISO", "White_Balance",
+  "Date", "Reel_Name", "Resolution", "FPS", "Source_TC",
+  "Good_Take", "Video_Codec", "Source_Resolution", "File_Name", "Duration"
+];
 
 // --- Custom template parsing ---
 // Supports writing: "%Scene / %Shot - %Take %Camera#" and stores it as parts.
@@ -305,7 +493,20 @@ function buildTextFromParts(previewMetadata, templateObj){
 let bgImage = null;
 let saveTimer = null;
 
-let drag = { active:false, index:null, offsetX:0, offsetY:0 };
+let drag = { active:false, index:null, offsetX:0, offsetY:0, snapAxisX:null, snapAxisY:null };
+
+// Axes magnétiques fixes (relatif 0-1)
+const SNAP_AXES_X = [0, 0.05, 0.1, 0.333, 0.5, 0.667, 0.9, 0.95, 1.0];
+const SNAP_AXES_Y = [0, 0.05, 0.1, 0.333, 0.5, 0.667, 0.9, 0.95, 1.0];
+const SNAP_THRESHOLD = 0.02;
+
+function snapToAxis(val, fixedAxes, dynamicAxes, threshold) {
+  const allAxes = fixedAxes.concat(dynamicAxes);
+  for (const axis of allAxes) {
+    if (Math.abs(val - axis) < threshold) return axis;
+  }
+  return val;
+}
 let lastBoxes = []; // [{index, x,y,w,h}]
 const loadedFontFamilies = new Set(["Arial"]);
 const systemFontFamilies = [
@@ -485,6 +686,13 @@ function bindInputs(){
   }
 
   els.btnReload.addEventListener("click", loadFromServer);
+
+  const tokenSearchInput = document.getElementById("tokenSearch");
+  if(tokenSearchInput){
+    tokenSearchInput.addEventListener("input", () => {
+      renderMetadataTokens(tokenSearchInput.value);
+    });
+  }
   // --- Help Overlay ---
   const btnHelp = document.getElementById("btnHelp");
   const helpOverlay = document.getElementById("helpOverlay");
@@ -502,14 +710,55 @@ function bindInputs(){
     });
   }
 
+  // --- Presets Overlay ---
+  const btnPresets = document.getElementById("btnPresets");
+  const presetsOverlay = document.getElementById("presetsOverlay");
+  const btnClosePresets = document.getElementById("btnClosePresets");
+
+  if (btnPresets) {
+    btnPresets.addEventListener("click", fetchAndShowPresets);
+  }
+  if (btnClosePresets && presetsOverlay) {
+    btnClosePresets.addEventListener("click", () => {
+      presetsOverlay.classList.add("hidden");
+    });
+  }
+
   // Close with Escape key
   document.addEventListener("keydown", (ev)=>{
-    if(ev.key === "Escape" && helpOverlay && !helpOverlay.classList.contains("hidden")){
-      helpOverlay.classList.add("hidden");
+    if(ev.key === "Escape"){
+      if(helpOverlay && !helpOverlay.classList.contains("hidden")){
+        helpOverlay.classList.add("hidden");
+      }
+      if(presetsOverlay && !presetsOverlay.classList.contains("hidden")){
+        presetsOverlay.classList.add("hidden");
+      }
     }
   });
 
-  els.btnSave.addEventListener("click", saveToServer);
+  const btnExportXml = document.getElementById("btnExportXml");
+  if (btnExportXml) {
+    btnExportXml.addEventListener("click", exportResolveXml);
+  }
+
+  const btnSendToResolve = document.getElementById("btnSendToResolve");
+  if(btnSendToResolve){
+    btnSendToResolve.addEventListener("click", sendToResolve);
+  }
+
+  const btnResetLayout = document.getElementById("btnResetLayout");
+  if(btnResetLayout){
+    btnResetLayout.addEventListener("click", ()=>{
+      if(state.elements.length === 0) return;
+      if(!confirm("Remove all burn-in elements?")) return;
+      pushUndoState();
+      state.elements = [];
+      state.selectedIndex = null;
+      renderLayoutList();
+      render();
+      scheduleSave();
+    });
+  }
 
   els.imgPicker.addEventListener("change", (ev) => {
     const file = ev.target.files && ev.target.files[0];
@@ -571,7 +820,7 @@ function bindInputs(){
     pushUndoState();
     const item = state.elements[state.selectedIndex];
     item.x = clamp(parseFloat(els.metaPosX.value)/100,0,1);
-    if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x);
+    if(els.metaPosXVal) els.metaPosXVal.value = (item.x * 100).toFixed(1);
     render();
     scheduleSave();
   });
@@ -581,9 +830,35 @@ function bindInputs(){
     pushUndoState();
     const item = state.elements[state.selectedIndex];
     item.y = clamp(parseFloat(els.metaPosY.value)/100,0,1);
-    if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y);
+    if(els.metaPosYVal) els.metaPosYVal.value = (item.y * 100).toFixed(1);
     render();
     scheduleSave();
+  });
+
+  // Direct numeric input for X/Y (Enter or blur to commit)
+  function commitPosInput(axis){
+    if(state.selectedIndex == null) return;
+    const el = axis === "x" ? els.metaPosXVal : els.metaPosYVal;
+    const slider = axis === "x" ? els.metaPosX : els.metaPosY;
+    const val = clamp(parseFloat(el.value) || 0, 0, 100);
+    el.value = val.toFixed(1);
+    pushUndoState();
+    const item = state.elements[state.selectedIndex];
+    item[axis] = val / 100;
+    if(slider) slider.value = val.toFixed(1);
+    render();
+    scheduleSave();
+  }
+
+  ["x","y"].forEach(axis => {
+    const el = axis === "x" ? els.metaPosXVal : els.metaPosYVal;
+    el.addEventListener("change", () => commitPosInput(axis));
+    el.addEventListener("keydown", (ev) => {
+      if(ev.key === "Enter"){ ev.preventDefault(); commitPosInput(axis); el.blur(); }
+      if(ev.key === "Escape"){ ev.preventDefault(); el.blur(); }
+    });
+    // Prevent the keydown from bubbling to the global undo/redo listener
+    el.addEventListener("keydown", (ev) => { ev.stopPropagation(); }, true);
   });
 
   els.metaAlign.addEventListener("change", ()=>{
@@ -612,6 +887,17 @@ function bindInputs(){
       const item = state.elements[state.selectedIndex];
       item.opacity = clamp(Number(els.metaOpacity.value), 0, 1);
       if(els.metaOpacityVal) els.metaOpacityVal.textContent = item.opacity.toFixed(2);
+      render();
+      scheduleSave();
+    });
+  }
+
+  if(els.metaBgOpacity){
+    els.metaBgOpacity.addEventListener("input", ()=>{
+      if(state.selectedIndex == null) return;
+      const item = state.elements[state.selectedIndex];
+      item.bg_opacity = clamp(Number(els.metaBgOpacity.value), 0, 1);
+      if(els.metaBgOpacityVal) els.metaBgOpacityVal.textContent = item.bg_opacity.toFixed(2);
       render();
       scheduleSave();
     });
@@ -756,8 +1042,29 @@ function bindInputs(){
       const H = els.canvas.height;
       const item = state.elements[drag.index];
 
-      item.x = clamp(moveX / W, 0, 1);
-      item.y = clamp(moveY / H, 0, 1);
+      // Axes dynamiques : positions Y/X des autres éléments
+      const otherX = state.elements.filter((_,i) => i !== drag.index).map(e => e.x);
+      const otherY = state.elements.filter((_,i) => i !== drag.index).map(e => e.y);
+
+      const rawX = clamp(moveX / W, 0, 1);
+      const rawY = clamp(moveY / H, 0, 1);
+
+      // Shift désactive le magnétisme
+      const snapDisabled = ev.shiftKey;
+
+      if (snapDisabled) {
+        drag.snapAxisX = null;
+        drag.snapAxisY = null;
+        item.x = rawX;
+        item.y = rawY;
+      } else {
+        const snappedX = snapToAxis(rawX, SNAP_AXES_X, otherX, SNAP_THRESHOLD);
+        const snappedY = snapToAxis(rawY, SNAP_AXES_Y, otherY, SNAP_THRESHOLD);
+        drag.snapAxisX = (snappedX !== rawX) ? snappedX : null;
+        drag.snapAxisY = (snappedY !== rawY) ? snappedY : null;
+        item.x = snappedX;
+        item.y = snappedY;
+      }
 
       if(els.metaPosX){
         els.metaPosX.value = (item.x * 100).toFixed(1);
@@ -765,8 +1072,8 @@ function bindInputs(){
       if(els.metaPosY){
         els.metaPosY.value = (item.y * 100).toFixed(1);
       }
-      if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x);
-      if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y);
+      if(els.metaPosXVal) els.metaPosXVal.value = (item.x * 100).toFixed(1);
+      if(els.metaPosYVal) els.metaPosYVal.value = (item.y * 100).toFixed(1);
 
       render();
       return;
@@ -791,6 +1098,8 @@ function bindInputs(){
     if(drag.active){
       drag.active = false;
       drag.index = null;
+      drag.snapAxisX = null;
+      drag.snapAxisY = null;
       els.canvas.style.cursor = "default";
       scheduleSave();
     }
@@ -798,27 +1107,6 @@ function bindInputs(){
   els.canvas.addEventListener("pointerup", endDrag);
   els.canvas.addEventListener("pointercancel", endDrag);
 
-  if(els.safeGuides){
-    els.safeGuides.addEventListener("change", ()=>{
-      state.safe_guides = els.safeGuides.checked;
-      render();
-      scheduleSave();
-    });
-  }
-  if(els.safeGuideOuter){
-    els.safeGuideOuter.addEventListener("input", ()=>{
-      state.safe_guide_outer = clamp(Number(els.safeGuideOuter.value), 0, 0.2);
-      render();
-      scheduleSave();
-    });
-  }
-  if(els.safeGuideInner){
-    els.safeGuideInner.addEventListener("input", ()=>{
-      state.safe_guide_inner = clamp(Number(els.safeGuideInner.value), 0, 0.2);
-      render();
-      scheduleSave();
-    });
-  }
   // --- Keyboard shortcuts ---
   document.addEventListener("keydown", (ev) => {
     const isMac = navigator.platform.toUpperCase().includes("MAC");
@@ -828,8 +1116,12 @@ function bindInputs(){
       (!isMac && ev.ctrlKey && ev.key.toLowerCase() === "s");
 
     const isUndoShortcut =
-      (isMac && ev.metaKey && ev.key.toLowerCase() === "z") ||
-      (!isMac && ev.ctrlKey && ev.key.toLowerCase() === "z");
+      (isMac && ev.metaKey && !ev.shiftKey && ev.key.toLowerCase() === "z") ||
+      (!isMac && ev.ctrlKey && !ev.shiftKey && ev.key.toLowerCase() === "z");
+
+    const isRedoShortcut =
+      (isMac && ev.metaKey && ev.shiftKey && ev.key.toLowerCase() === "z") ||
+      (!isMac && ev.ctrlKey && ev.key.toLowerCase() === "y");
 
     if (isSaveShortcut) {
       ev.preventDefault();
@@ -839,6 +1131,11 @@ function bindInputs(){
     if (isUndoShortcut) {
       ev.preventDefault();
       undoLastAction();
+    }
+
+    if (isRedoShortcut) {
+      ev.preventDefault();
+      redoLastAction();
     }
   });
 }
@@ -861,32 +1158,27 @@ function updateCanvasRatio(){
   render();
 }
 
-function renderMetadataTokens(){
+function renderMetadataTokens(filter){
   if(!els.metadataTokenList) return;
+  const q = (filter || "").trim().toLowerCase();
 
   els.metadataTokenList.innerHTML = "";
 
-  // ---- Custom token ----
+  // ---- Custom token (always shown) ----
   const customDiv = document.createElement("div");
   customDiv.classList.add("tokenItem");
-  customDiv.textContent = "Custom";
-  customDiv.style.padding = "6px";
-  customDiv.style.marginBottom = "6px";
-  customDiv.style.cursor = "pointer";
-  customDiv.style.border = "1px solid #2a2f3a";
-  customDiv.style.borderRadius = "4px";
-  customDiv.style.fontSize = "12px";
-
+  customDiv.textContent = "✦ Custom";
+  customDiv.style.cssText = "padding:6px;margin-bottom:6px;cursor:pointer;border:1px solid #006D78;border-radius:4px;font-size:12px;color:#006D78;";
   customDiv.addEventListener("click", ()=>{
     pushUndoState();
-    const tpl = "%Scene / %Shot - %Take %Camera#";
+    const tpl = "%Scene / %Shot - %Take %Camera_#";
     const tplObj = compileTemplateParts(tpl);
     state.elements.push({
       key: "custom",
-      x: 0.5,
-      y: 0.5,
+      x: 0.5, y: 0.5,
       font_size_pt: 24,
       opacity: state.burnin_opacity,
+      bg_opacity: 0,
       align: "center",
       font_family: state.burnin_font_family || "Arial",
       font_weight: "normal",
@@ -895,53 +1187,80 @@ function renderMetadataTokens(){
       custom_tokens: tplObj.tokens,
       color: "#ffffff",
     });
-
-    // Auto-select newly created element
     state.selectedIndex = state.elements.length - 1;
-
     renderLayoutList();
     render();
     scheduleSave();
   });
-
   els.metadataTokenList.appendChild(customDiv);
 
-  metadataKeys.forEach(key => {
+  function makeTokenDiv(key) {
     const div = document.createElement("div");
     div.classList.add("tokenItem");
     div.textContent = key;
-    div.style.padding = "6px";
-    div.style.marginBottom = "6px";
-    div.style.cursor = "pointer";
-    div.style.border = "1px solid #2a2f3a";
-    div.style.borderRadius = "4px";
-    div.style.fontSize = "12px";
-
+    div.style.cssText = "padding:6px;margin-bottom:4px;cursor:pointer;border:1px solid #2a2f3a;border-radius:4px;font-size:12px;";
     div.addEventListener("click", ()=>{
       pushUndoState();
       state.elements.push({
         key: key,
-        x: 0.5,
-        y: 0.5,
+        x: 0.5, y: 0.5,
         font_size_pt: 24,
         opacity: state.burnin_opacity,
+        bg_opacity: 0,
         align: "center",
         font_family: state.burnin_font_family || "Arial",
         font_weight: "normal",
         template_custom: "",
         color: "#ffffff",
       });
-
-      // Auto-select newly created element
       state.selectedIndex = state.elements.length - 1;
-
       renderLayoutList();
       render();
       scheduleSave();
     });
+    return div;
+  }
 
-    els.metadataTokenList.appendChild(div);
+  if(q) {
+    // Search mode: show all matching keys flat
+    metadataKeys.forEach(key => {
+      if(key.toLowerCase().includes(q)){
+        els.metadataTokenList.appendChild(makeTokenDiv(key));
+      }
+    });
+    return;
+  }
+
+  // Normal mode: favorites first, then "show more" for the rest
+  const favSet = new Set(FAVORITES);
+  const others = metadataKeys.filter(k => !favSet.has(k));
+
+  const favContainer = document.createElement("div");
+  favContainer.className = "tokenFavorites";
+  FAVORITES.filter(k => metadataKeys.includes(k)).forEach(key => {
+    favContainer.appendChild(makeTokenDiv(key));
   });
+  els.metadataTokenList.appendChild(favContainer);
+
+  const moreContainer = document.createElement("div");
+  moreContainer.className = "tokenMore";
+  moreContainer.style.display = "none";
+  others.forEach(key => {
+    moreContainer.appendChild(makeTokenDiv(key));
+  });
+
+  const showMoreBtn = document.createElement("button");
+  showMoreBtn.className = "showMoreBtn";
+  showMoreBtn.textContent = `Show more (${others.length})`;
+  let expanded = false;
+  showMoreBtn.addEventListener("click", () => {
+    expanded = !expanded;
+    moreContainer.style.display = expanded ? "block" : "none";
+    showMoreBtn.textContent = expanded ? "Show less" : `Show more (${others.length})`;
+  });
+
+  els.metadataTokenList.appendChild(showMoreBtn);
+  els.metadataTokenList.appendChild(moreContainer);
 }
 function selectElement(index){
   state.selectedIndex = index;
@@ -967,8 +1286,8 @@ function selectElement(index){
   if(els.metaPosY){
     els.metaPosY.value = ((item.y || 0.5) * 100).toFixed(1);
   }
-  if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x || 0.5);
-  if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y || 0.5);
+  if(els.metaPosXVal) els.metaPosXVal.value = ((item.x || 0.5) * 100).toFixed(1);
+  if(els.metaPosYVal) els.metaPosYVal.value = ((item.y || 0.5) * 100).toFixed(1);
 
   if(els.metaAlign) els.metaAlign.value = item.align || "center";
   if(els.metaFontSize) els.metaFontSize.value = item.font_size_pt || 24;
@@ -980,6 +1299,12 @@ function selectElement(index){
     if(els.metaOpacityVal){
       els.metaOpacityVal.textContent = op.toFixed(2);
     }
+  }
+
+  if(els.metaBgOpacity){
+    const bgOp = item.bg_opacity ?? 0;
+    els.metaBgOpacity.value = bgOp;
+    if(els.metaBgOpacityVal) els.metaBgOpacityVal.textContent = bgOp.toFixed(2);
   }
 
   if(els.metaBold){
@@ -1182,20 +1507,6 @@ function render(){
     ctx.restore();
   }
 
-  // Draw safe area guides
-  if(state.safe_guides){
-    ctx.strokeStyle = "rgba(255,255,255,0.25)";
-    ctx.lineWidth = 1;
-
-    const outerInsetX = W * state.safe_guide_outer;
-    const outerInsetY = H * state.safe_guide_outer;
-    ctx.strokeRect(outerInsetX, outerInsetY, W - 2*outerInsetX, H - 2*outerInsetY);
-
-    const innerInsetX = W * state.safe_guide_inner;
-    const innerInsetY = H * state.safe_guide_inner;
-    ctx.strokeRect(innerInsetX, innerInsetY, W - 2*innerInsetX, H - 2*innerInsetY);
-  }
-
   // --- Display active ratio overlay ---
   ctx.save();
   ctx.globalAlpha = 0.6;
@@ -1247,6 +1558,17 @@ function render(){
       drawX = x - textWidth;
     }
 
+    // Background box
+    const bgOp = clamp(item.bg_opacity ?? 0, 0, 1);
+    if(bgOp > 0){
+      ctx.save();
+      ctx.globalAlpha = bgOp;
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(drawX - 4, y - 2, textWidth + 8, fontSize * 1.2 + 4);
+      ctx.restore();
+      ctx.globalAlpha = clamp(item.opacity ?? state.burnin_opacity, 0, 1);
+    }
+
     ctx.fillStyle = item.color || "#ffffff";
     ctx.textBaseline = "top";
     ctx.fillText(text, drawX, y);
@@ -1269,6 +1591,31 @@ function render(){
   });
 
   ctx.globalAlpha = 1.0;
+
+  // --- Lignes filigrane de snap (magnétisme) ---
+  if (drag.active && (drag.snapAxisX !== null || drag.snapAxisY !== null)) {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(180, 180, 180, 0.85)";
+
+    if (drag.snapAxisX !== null) {
+      const sx = drag.snapAxisX * W;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, H);
+      ctx.stroke();
+    }
+    if (drag.snapAxisY !== null) {
+      const sy = drag.snapAxisY * H;
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(W, sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 function drawCover(img, dx, dy, dW, dH){
@@ -1329,9 +1676,6 @@ async function loadFromServer(){
             state.mask_opacity = p.mask_opacity;
         }
 
-        if(p.safe_guides && typeof p.safe_guides === "object"){
-            state.safe_guides = !!p.safe_guides.enabled;
-        }
     }
 
     // Ensure defaults
@@ -1391,11 +1735,6 @@ async function loadFromServer(){
     if(els.metaFontFamily){
       fillSelect(els.metaFontFamily, Array.from(new Set([...systemFontFamilies, ...loadedFontFamilies])), state.burnin_font_family || "Arial");
     }
-    // Initialize safe guides controls
-    if(els.safeGuides) els.safeGuides.checked = !!state.safe_guides;
-    if(els.safeGuideOuter) els.safeGuideOuter.value = state.safe_guide_outer ?? 0.05;
-    if(els.safeGuideInner) els.safeGuideInner.value = state.safe_guide_inner ?? 0.10;
-
     // Restore mask UI if controls exist
     const maskStyleSelect = document.getElementById("maskStyle");
     if(maskStyleSelect){
@@ -1414,8 +1753,8 @@ async function loadFromServer(){
     // Ensure slider % labels are always updated on load.
     if(state.selectedIndex != null){
       const item = state.elements[state.selectedIndex];
-      if(els.metaPosXVal) els.metaPosXVal.textContent = pctLabel(item.x || 0.5);
-      if(els.metaPosYVal) els.metaPosYVal.textContent = pctLabel(item.y || 0.5);
+      if(els.metaPosXVal) els.metaPosXVal.value = ((item.x || 0.5) * 100).toFixed(1);
+      if(els.metaPosYVal) els.metaPosYVal.value = ((item.y || 0.5) * 100).toFixed(1);
     }
     render();
     setStatus("Loaded","ok");
@@ -1438,7 +1777,8 @@ async function saveToServer(){
         align: el.align || "center",
         font_family: el.font_family || state.burnin_font_family || "Arial",
         font_weight: el.font_weight || "normal",
-        color: el.color || "#ffffff"
+        color: el.color || "#ffffff",
+        bg_opacity: Number(el.bg_opacity ?? 0),
       };
 
       if (el.key === "custom") {
@@ -1469,9 +1809,6 @@ async function saveToServer(){
       burnin_font_path: state.burnin_font_path || "",
       burnin_opacity: Number(state.burnin_opacity ?? 0.5),
       burnin_font_family: state.burnin_font_family || "Arial",
-      safe_guides: !!state.safe_guides,
-      safe_guide_outer: Number(state.safe_guide_outer ?? 0.05),
-      safe_guide_inner: Number(state.safe_guide_inner ?? 0.10),
       elements: normalizedElements,
 
       // Flat fields
@@ -1486,9 +1823,6 @@ async function saveToServer(){
         mode: state.image_ratio_mode,
         mask_style: state.mask_style,
         mask_opacity: Number(state.mask_opacity ?? 1),
-        safe_guides: {
-          enabled: !!state.safe_guides
-        }
       }
     };
 
@@ -1515,6 +1849,582 @@ function clampInt(v,a,b){
   return Math.max(a,Math.min(b,Math.round(v)));
 }
 
+
+// ─── Export to Resolve XML ───────────────────────────────────────────────────
+// Keys that map to a Resolve auto-fill type code (not custom text slots)
+const _autoFillKeys = new Set([
+  "Record_TC", "Source_TC", "KeyKode", "File_Name", "Clipname",
+  "Reel_Name", "Scene", "Take", "Shot", "Angle", "Shoot_Day",
+  "Date", "Date_Recorded", "Good_Take", "Camera_#", "Roll_Card", "Synced_Audio_File"
+]);
+
+async function exportResolveXml() {
+  const nameInput = document.getElementById("exportPresetName");
+  const name = (nameInput && nameInput.value.trim()) || "Adit Preset";
+
+  // Count elements that will occupy a Custom Text slot (128/129/130)
+  const customCount = state.elements.filter(el => !_autoFillKeys.has(el.key)).length;
+  if (customCount > 3) {
+    const ok = confirm(
+      `Warning: ${customCount} elements need a Custom Text slot, but Resolve only supports 3 (Custom Text1, Text2, Text3).\n\n` +
+      `Only the first 3 will be included in the exported XML. Continue?`
+    );
+    if (!ok) return;
+  }
+
+  // Save current state first so the server reads the latest settings
+  await saveToServer();
+
+  const url = `${API_BASE}/export_preset?name=${encodeURIComponent(name)}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      setStatus(`Export error: ${json.error || res.status}`, "bad");
+      return;
+    }
+    const blob = await res.blob();
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = dlUrl;
+    a.download = `${name} Burn In.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(dlUrl);
+    setStatus("XML exported", "ok");
+  } catch (e) {
+    setStatus("Export failed", "bad");
+  }
+}
+
+async function sendToResolve() {
+  const nameInput = document.getElementById("exportPresetName");
+  const name = (nameInput && nameInput.value.trim()) || "My Preset";
+
+  const customCount = state.elements.filter(el => !_autoFillKeys.has(el.key)).length;
+  if (customCount > 3) {
+    const ok = confirm(
+      `Warning: ${customCount} elements need a Custom Text slot, but Resolve only supports 3.\n\nOnly the first 3 will be included. Continue?`
+    );
+    if (!ok) return;
+  }
+
+  await saveToServer();
+
+  try {
+    const res = await fetch(`${API_BASE}/send_to_resolve?name=${encodeURIComponent(name)}`, { method: "POST" });
+    const json = await res.json();
+    if (!json.ok) {
+      setStatus(`Send error: ${json.error || res.status}`, "bad");
+      return;
+    }
+    setStatus("Sent to Resolve ✓", "ok");
+  } catch(e) {
+    setStatus("Send to Resolve failed", "bad");
+  }
+}
+
+// ─── Resolve Preset Viewer ───────────────────────────────────────────────────
+
+// Maps every Resolve %{Token Name} → our internal %TokenKey
+const resolveTokenMap = {
+  // ── File / Clip ─────────────────────────────────────────────────────────
+  "File Name":             "File_Name",
+  "Clip Directory":        "Clip_Directory",
+  "Video Codec":           "Video_Codec",
+  "Start TC":              "Start_TC",
+  "End TC":                "End_TC",
+  "Duration TC":           "Duration",
+  "Start Frame":           "Start_Frame",
+  "End Frame":             "End_Frame",
+  "Frames":                "Frames",
+  "Shot Frame Rate":       "FPS",
+  "Resolution":            "Resolution",
+  "Data Level":            "Data_Level",
+  "Audio Channels":        "Audio_Channels",
+  "Date Modified":         "Date_Modified",
+  "KeyKode":               "KeyKode",
+  "Clip Name":             "Clipname",
+  "Source Name":           "Clipname",
+  "EDL Clip Name":         "EDL_Clip_Name",
+  "Reel Name":             "Reel_Name",
+  "Reel Number":           "Reel_Name",
+  "File Path":             "File_Path",
+  "Usage":                 "Usage",
+  "Subclip":               "Subclip",
+  "Clip Type":             "Clip_Type",
+  "Clip #":                "Clip_#",
+  "In":                    "In",
+  "Out":                   "Out",
+  "Version":               "Version",
+  "Group":                 "Group",
+  "Drop Frame":            "Drop_Frame",
+  "Has Keyframes":         "Has_Keyframes",
+
+  // ── Scene / Shot / Production ────────────────────────────────────────────
+  "Description":           "Comments",
+  "Comments":              "Comments",
+  "Scene":                 "Scene",
+  "Shot":                  "Shot",
+  "Angle":                 "Angle",
+  "Take":                  "Take",
+  "Move":                  "Move",
+  "Keywords":              "Keywords",
+  "Good Take":             "Good_Take",
+  "Shoot Day":             "Shoot_Day",
+  "Date Recorded":         "Date_Recorded",
+  "Roll Card #":           "Roll_Card",
+  "Program Name":          "Program_Name",
+  "Episode #":             "Episode_#",
+  "Episode Name":          "Episode_Name",
+  "Shot During Ep":        "Shot_During_Ep",
+  "Location":              "Location",
+  "Unit Name":             "Unit_Name",
+  "Setup":                 "Setup",
+  "Day / Night":           "Day_Night",
+  "Environment":           "Environment",
+  "Shot Type":             "Shot_Type",
+  "Format":                "Format",
+  "Safe Area":             "Safe_Area",
+  "Time-lapse Interval":   "Timelapse_Interval",
+  "People":                "People",
+  "Category":              "Category",
+  "Subcategory":           "Subcategory",
+
+  // ── Camera ───────────────────────────────────────────────────────────────
+  "Cam #":                 "Camera_#",
+  "Cam Type":              "Camera_Type",
+  "Cam Serial #":          "Camera_Serial",
+  "Cam ID":                "Camera_ID",
+  "Cam Notes":             "Camera_Notes",
+  "Cam Format":            "Camera_Format",
+  "Cam FPS":               "FPS",
+  "Cam TC Type":           "TC_Type",
+  "Cam Firmware":          "Camera_Firmware",
+  "Camera Manufacturer":   "Camera_Manufacturer",
+  "Camera Position":       "Camera_Position",
+  "Camera Pan Angle":      "Camera_Pan_Angle",
+  "Camera Tilt Angle":     "Camera_Tilt_Angle",
+  "Camera Roll Angle":     "Camera_Roll_Angle",
+  "Shutter Speed":         "Shutter_Angle",
+  "Shutter Angle":         "Shutter_Angle",
+  "Shutter Type":          "Shutter_Type",
+  "ISO":                   "ISO",
+  "White Point":           "White_Balance",
+  "White Balance Tint":    "White_Balance_Tint",
+  "Sensor":                "Sensor",
+  "Sensor Area Captured":  "Sensor_Area",
+  "Media Type":            "Media_Type",
+  "Mon Color Space":       "Monitor_Color_Space",
+  "Monitor LUT":           "Monitor_LUT",
+  "LUT Used":              "LUT_Used",
+  "LUT Used On Set":       "LUT_Used_On_Set",
+  "RAW":                   "RAW",
+  "H-Flip":                "H_Flip",
+  "V-Flip":                "V_Flip",
+
+  // ── Lens ─────────────────────────────────────────────────────────────────
+  "Lens Type":             "Lens_Type",
+  "Lens #":                "Lens_#",
+  "Lens Notes":            "Lens_Notes",
+  "Cam Aperture":          "Aperture",
+  "Camera Aperture Type":  "Aperture_Type",
+  "Focal Point (mm)":      "Focal_Length",
+  "Distance":              "Distance",
+  "Filter":                "Filter",
+  "ND Filter":             "ND_Filter",
+  "PAR Notes":             "PAR_Notes",
+  "Asp Ratio Notes":       "Asp_Ratio_Notes",
+  "Gamma Notes":           "Gamma_Notes",
+  "Color Space Notes":     "Color_Space_Notes",
+
+  // ── Post / Color ─────────────────────────────────────────────────────────
+  "LUT 1":                 "LUT1",
+  "LUT 2":                 "LUT2",
+  "LUT 3":                 "LUT3",
+  "Lab Roll #":            "Lab_Roll",
+  "Colorist Notes":        "Colorist_Notes",
+  "CDL SOP":               "CDL_SOP",
+  "CDL SAT":               "CDL_SAT",
+  "IDT":                   "IDT",
+  "Input LUT":             "Input_LUT",
+  "Input Color Space":     "Input_Color_Space",
+  "Input Sizing Preset":   "Input_Sizing_Preset",
+  "Input Sizing":          "Input_Sizing",
+  "Edit Sizing":           "Edit_Sizing",
+  "Slate TC":              "Slate_TC",
+  "Graded":                "Graded",
+  "HDR Graded":            "HDR_Graded",
+  "Modified":              "Modified",
+  "Unrendered":            "Unrendered",
+  "Tracked":               "Tracked",
+  "Noise Reduction":       "Noise_Reduction",
+  "Proxy Clip":            "Proxy_Clip",
+  "Different Frame Rate":  "Different_Frame_Rate",
+  "Matte Nodes":           "Matte_Nodes",
+  "Associated Mattes":     "Associated_Mattes",
+  "Shared Nodes":          "Shared_Nodes",
+  "Fusion Composition":    "Fusion_Composition",
+  "Magic Mask":            "Magic_Mask",
+  "Collaborative Update":  "Collaborative_Update",
+  "Compression Ratio":     "Compression_Ratio",
+  "Codec Bitrate":         "Codec_Bitrate",
+  "Render Resolution":     "Render_Resolution",
+
+  // ── 3D / Stereo ──────────────────────────────────────────────────────────
+  "S3D Shot":              "S3D_Shot",
+  "S3D Eye":               "S3D_Eye",
+  "S3D Notes":             "S3D_Notes",
+  "S3D Sync":              "S3D_Sync",
+  "IA":                    "IA",
+  "FG":                    "FG",
+  "CV":                    "CV",
+  "BG":                    "BG",
+  "Convergence Adj":       "Convergence_Adj",
+  "3D Rig Type":           "3D_Rig_Type",
+  "3D Rig ID #":           "3D_Rig_ID",
+  "Rig Inverted":          "Rig_Inverted",
+  "Eye":                   "Eye",
+
+  // ── VFX ──────────────────────────────────────────────────────────────────
+  "VFX Shot #":            "VFX_Shot",
+  "VFX Markers":           "VFX_Markers",
+  "VFX Notes":             "VFX_Notes",
+  "Framing Chart":         "Framing_Chart",
+  "Color Chart":           "Color_Chart",
+  "Grey Chart":            "Grey_Chart",
+  "Lens Chart":            "Lens_Chart",
+  "VFX Grey Ball":         "VFX_Grey_Ball",
+  "VFX Mirror Ball":       "VFX_Mirror_Ball",
+
+  // ── Audio ────────────────────────────────────────────────────────────────
+  "Audio Recorder":        "Audio_Recorder",
+  "Deck Serial #":         "Deck_Serial",
+  "Deck Firmware":         "Deck_Firmware",
+  "Audio Notes":           "Audio_Notes",
+  "Embedded Audio":        "Embedded_Audio",
+  "Audio File Type":       "Audio_File_Type",
+  "Audio Media":           "Audio_Media",
+  "Sound Roll #":          "Sound_Roll",
+  "Audio TC Type":         "Audio_TC_Type",
+  "Audio Start TC":        "Audio_Start_TC",
+  "Audio End TC":          "Audio_End_TC",
+  "Audio Dur TC":          "Audio_Dur_TC",
+  "Sample Rate (KHz)":     "Sample_Rate",
+  "Audio Sample Rate":     "Audio_Sample_Rate",
+  "Audio FPS":             "Audio_FPS",
+  "Audio Bit Depth":       "Audio_Bit_Depth",
+  "Audio Offset":          "Audio_Offset",
+  "Bit Rate":              "Bit_Rate",
+  "Tone":                  "Tone",
+  "FSD":                   "FSD",
+  "Track 1":   "Track_1",  "Track 2":   "Track_2",  "Track 3":   "Track_3",
+  "Track 4":   "Track_4",  "Track 5":   "Track_5",  "Track 6":   "Track_6",
+  "Track 7":   "Track_7",  "Track 8":   "Track_8",  "Track 9":   "Track_9",
+  "Track 10":  "Track_10", "Track 11":  "Track_11", "Track 12":  "Track_12",
+  "Track 13":  "Track_13", "Track 14":  "Track_14", "Track 15":  "Track_15",
+  "Track 16":  "Track_16", "Track 17":  "Track_17", "Track 18":  "Track_18",
+  "Track 19":  "Track_19", "Track 20":  "Track_20", "Track 21":  "Track_21",
+  "Track 22":  "Track_22", "Track 23":  "Track_23", "Track 24":  "Track_24",
+  "Aux 1":                 "Aux_1",
+  "Aux 2":                 "Aux_2",
+  "Start Dialog TC":       "Start_Dialog_TC",
+  "End Dialog TC":         "End_Dialog_TC",
+  "Dialog Duration":       "Dialog_Duration",
+  "Dialog Starts As":      "Dialog_Starts_As",
+  "Dialog Notes":          "Dialog_Notes",
+
+  // ── Crew / Production ────────────────────────────────────────────────────
+  "Production Name":       "Production_Name",
+  "Series #":              "Series_#",
+  "Genre":                 "Genre",
+  "Production Co":         "Production_Co",
+  "Producer":              "Producer",
+  "Asst Producer":         "Asst_Producer",
+  "Line Producer":         "Line_Producer",
+  "Unit Manager":          "Unit_Manager",
+  "Post Producer":         "Post_Producer",
+  "Production Asst":       "Production_Asst",
+  "Editor":                "Editor",
+  "Editing Asst":          "Editing_Asst",
+  "Data Wrangler":         "Data_Wrangler",
+  "Colorist":              "Colorist",
+  "Colorist Asst":         "Colorist_Asst",
+  "Dailies Colorist":      "Dailies_Colorist",
+  "Director":              "Director",
+  "Asst Director":         "Asst_Director",
+  "Script Suprvisr":       "Script_Supervisor",
+  "Continuity":            "Continuity",
+  "DOP":                   "DOP",
+  "Cam Operator":          "Cam_Operator",
+  "Cam Asst":              "Cam_Asst",
+  "Focus Puller":          "Focus_Puller",
+  "Key Grip":              "Key_Grip",
+  "Sound Mixer":           "Sound_Mixer",
+  "Digital Tech":          "Digital_Tech",
+  "Crew Comments":         "Crew_Comments",
+  "2nd Dir":               "2nd_Dir",
+  "2nd Dir Asst":          "2nd_Dir_Asst",
+  "2nd Continuity":        "2nd_Continuity",
+  "2nd DOP":               "2nd_DOP",
+  "2nd Asst":              "2nd_Asst",
+  "2nd DIT":               "2nd_DIT",
+  "DOP Reviewed":          "DOP_Reviewed",
+  "Director Reviewed":     "Director_Reviewed",
+  "Focus Reviewed":        "Focus_Reviewed",
+  "VFX Svsr Reviewed":     "VFX_Svsr_Reviewed",
+  "Colorist Reviewed":     "Colorist_Reviewed",
+  "2nd DOP Reviewed":      "2nd_DOP_Reviewed",
+  "2nd Dir Reviewed":      "2nd_Dir_Reviewed",
+  "Sound Reviewed":        "Sound_Reviewed",
+  "Continuity Reviewed":   "Continuity_Reviewed",
+  "Wardrobe Reviewed":     "Wardrobe_Reviewed",
+  "Send to Studio":        "Send_to_Studio",
+  "Send to":               "Send_to",
+  "Reviewers Notes":       "Reviewers_Notes",
+
+  // ── Timeline / Project ───────────────────────────────────────────────────
+  "Timeline":              "Timeline",
+  "Timeline Name":         "Timeline",
+  "Timeline Index":        "Timeline_Index",
+  "Color Thumbnail Index": "Color_Thumbnail_Index",
+  "Project Name":          "Project_Name",
+  "Track Number":          "Track_Number",
+  "Track Name":            "Track_Name",
+  "Record TC":             "Record_TC",
+  "Source TC":             "Source_TC",
+  "Synced Audio File Name":"Synced_Audio_File",
+  "Synced Audio TC":       "Synced_Audio_TC",
+  "EDL Tape Number":       "EDL_Tape_Number",
+  "EDL Event Number":      "EDL_Event_Number",
+
+  // ── Date / Time ──────────────────────────────────────────────────────────
+  "Date":                  "Date",
+  "Date ISO":              "Date_ISO",
+  "Date US":               "Date_US",
+  "Date Year":             "Date_Year",
+  "Date Month":            "Date_Month",
+  "Date Day":              "Date_Day",
+  "Time 24hr":             "Time_24hr",
+  "Time 12hr":             "Time_12hr",
+  "Time ISO":              "Time_ISO",
+  "Time Hour 12hr":        "Time_Hour_12hr",
+  "Time Hour 24hr":        "Time_Hour_24hr",
+  "Time Minutes":          "Time_Minutes",
+  "Time Seconds":          "Time_Seconds",
+
+  // ── Markers ──────────────────────────────────────────────────────────────
+  "Marker Name":           "Marker_Name",
+  "Marker Notes":          "Marker_Notes",
+  "Marker Keywords":       "Marker_Keywords",
+};
+
+// Convert "%{Token Name} text %{Other}" → "%Token_Name text %Other"
+function convertResolveTemplate(text) {
+  return text.replace(/%\{([^}]+)\}/g, (match, tokenName) => {
+    const mapped = resolveTokenMap[tokenName];
+    if (mapped) return `%${mapped}`;
+    // Fallback: remove braces, replace spaces and special chars
+    const fallback = tokenName.replace(/\s+/g, "_").replace(/[()]/g, "");
+    return `%${fallback}`;
+  });
+}
+
+// Convert Resolve's HorzAlign int (0=left,1=center,2=right) to CSS string
+function resolveAlignLabel(horz) {
+  return horz === 0 ? "left" : horz === 2 ? "right" : "center";
+}
+
+// Convert [r, g, b] floats (0..1) to #rrggbb hex
+function rgbToHex(fg) {
+  const ch = fg.map(v => {
+    const n = Math.round(clamp(v, 0, 1) * 255);
+    return n.toString(16).padStart(2, "0");
+  });
+  return `#${ch.join("")}`;
+}
+
+async function fetchAndShowPresets() {
+  const overlay = document.getElementById("presetsOverlay");
+  const statusEl = document.getElementById("presetsStatus");
+  const listEl = document.getElementById("presetsList");
+
+  overlay.classList.remove("hidden");
+  statusEl.textContent = "Loading…";
+  listEl.innerHTML = "";
+
+  try {
+    const res = await fetch(`${API_BASE}/presets`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Server error");
+
+    const presets = json.presets || [];
+    statusEl.textContent = `${presets.length} preset(s) found`;
+
+    if (presets.length === 0) {
+      listEl.innerHTML = "<p style='color:#666'>No presets found.</p>";
+      return;
+    }
+
+    presets.forEach(preset => {
+      const block = document.createElement("div");
+      block.className = "presetBlock";
+
+      const header = document.createElement("div");
+      header.className = "presetHeader";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "presetName";
+      nameSpan.textContent = preset.name;
+
+      const right = document.createElement("div");
+      right.className = "presetHeaderRight";
+
+      const countSpan = document.createElement("span");
+      countSpan.className = "presetCount";
+      countSpan.textContent = `${preset.elements.length} element(s)`;
+
+      const toggleSpan = document.createElement("span");
+      toggleSpan.className = "presetToggle";
+      toggleSpan.textContent = "▶";
+
+      right.appendChild(countSpan);
+      right.appendChild(toggleSpan);
+      header.appendChild(nameSpan);
+      header.appendChild(right);
+
+      const body = document.createElement("div");
+      body.className = "presetBody";
+
+      preset.elements.forEach(elem => {
+        const row = document.createElement("div");
+        row.className = "presetElem";
+
+        const typeEl = document.createElement("div");
+        typeEl.className = "presetElemType";
+        typeEl.textContent = elem.type_label || `Type ${elem.type}`;
+
+        const textEl = document.createElement("div");
+        textEl.className = "presetElemText" + (elem.text ? "" : " auto");
+        if (elem.text) {
+          textEl.textContent = convertResolveTemplate(elem.text);
+        } else {
+          textEl.textContent = "(auto-filled by Resolve)";
+        }
+
+        const fontEl = document.createElement("div");
+        fontEl.className = "presetElemFont";
+        fontEl.textContent = `${elem.font_family} ${elem.font_size}pt${elem.font_weight === "bold" ? " bold" : ""}`;
+
+        const posEl = document.createElement("div");
+        posEl.className = "presetElemPos";
+        posEl.textContent = `x:${(elem.x * 100).toFixed(0)}% y:${(elem.y * 100).toFixed(0)}%\nop:${elem.opacity.toFixed(2)}\n${resolveAlignLabel(elem.horz_align)}`;
+        posEl.style.whiteSpace = "pre";
+
+        row.appendChild(typeEl);
+        row.appendChild(textEl);
+        row.appendChild(fontEl);
+        row.appendChild(posEl);
+        body.appendChild(row);
+      });
+
+      // Import button — always shown (supports both custom text and auto-fill types)
+      if (preset.elements.length > 0) {
+        const importBtn = document.createElement("button");
+        importBtn.className = "btnImportPreset";
+        importBtn.textContent = "Import into layout";
+        importBtn.addEventListener("click", () => {
+          importResolvePreset(preset);
+          overlay.classList.add("hidden");
+        });
+        body.appendChild(importBtn);
+      }
+
+      header.addEventListener("click", () => {
+        const isOpen = body.classList.toggle("open");
+        toggleSpan.textContent = isOpen ? "▼" : "▶";
+      });
+
+      block.appendChild(header);
+      block.appendChild(body);
+      listEl.appendChild(block);
+    });
+
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+// Resolve Type code → our internal key (reverse of _OUR_KEY_TO_RESOLVE_TYPE)
+const resolveTypeToKey = {
+  1:        "Record_TC",
+  4:        "Source_TC",
+  16:       "KeyKode",
+  32:       "File_Name",
+  256:      "Clipname",
+  1024:     "Reel_Name",
+  2048:     "Scene",
+  4096:     "Take",
+  8192:     "Shot",
+  16384:    "Angle",
+  32768:    "Shoot_Day",
+  65536:    "Date",
+  131072:   "Good_Take",
+  524288:   "Camera_#",
+  1048576:  "Roll_Card",
+  33554432: "Synced_Audio_File",
+};
+
+function importResolvePreset(preset) {
+  pushUndoState();
+
+  preset.elements.forEach(elem => {
+    const type  = elem.type;
+    const color = rgbToHex(elem.fg_color || [1, 1, 1]);
+    const align = resolveAlignLabel(elem.horz_align);
+    const base  = {
+      x:           clamp(elem.x, 0, 1),
+      y:           clamp(elem.y, 0, 1),
+      font_size_pt: clamp(elem.font_size || 24, 4, 400),
+      opacity:     clamp(elem.opacity, 0, 1),
+      align:       align,
+      font_family: elem.font_family || state.burnin_font_family || "Arial",
+      font_weight: elem.font_weight || "normal",
+      color:       color,
+    };
+
+    if (type === 128 || type === 129 || type === 130) {
+      // Custom text slot — needs a text template
+      if (!elem.text) return;
+      const converted = convertResolveTemplate(elem.text);
+      const tplObj    = compileTemplateParts(converted);
+      state.elements.push({
+        ...base,
+        key:            "custom",
+        template_custom: converted,
+        template_parts:  { parts: tplObj.parts },
+        custom_tokens:   tplObj.tokens,
+      });
+    } else {
+      // Auto-fill type — reverse-map to our internal key
+      const key = resolveTypeToKey[type];
+      if (!key) return; // unknown/unsupported type, skip silently
+      state.elements.push({
+        ...base,
+        key:            key,
+        template_custom: "",
+        template_parts:  { parts: [] },
+        custom_tokens:   [],
+      });
+    }
+  });
+
+  renderLayoutList();
+  render();
+  scheduleSave();
+  setStatus("Preset imported", "ok");
+}
 
 async function init(){
   bindInputs();

@@ -52,6 +52,7 @@ import os
 import subprocess
 import sys, time
 import json
+import re
 from datetime import datetime
 
 try:
@@ -189,7 +190,7 @@ def load_settings_from_json(
 
         return merged
 
-    except:
+    except Exception:
         print("cannot find setting file")
         with open(setting_path, "w") as j:
             json.dump(settings, j)
@@ -330,7 +331,7 @@ def frame_from_timecode(timecode, frame_rate, drop_frame):
     return smpte.getframes(timecode)
 
 
-def create_new_filename(clip, format_style="EU", fallback_shot_from_scene=True):
+def create_new_filename(clip, format_style="EU", fallback_shot_from_scene=True, settings=None):
     """
     format_style:
         "US" -> Scene_Shot-Take_Camera_Clipname
@@ -792,7 +793,6 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
 
     cropX = int((W - cropW) / 2)
     cropY = int((H - cropH) / 2)
-    print("DEBUG cropY =", cropY)
 
     # ------------------------------------------------------------
     # MASK DRAWING (black bars + optional white frame)
@@ -829,8 +829,6 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
 
     # Composite mask BEFORE any text burnins
     base = Image.alpha_composite(base, mask_layer)
-
-    print("DEBUG mask applied (bars/lines composited)")
 
     full_meta = metadata_block.get("metadata", {})
     full_props = metadata_block.get("clip_properties", {})
@@ -978,7 +976,7 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
 
             def parse_template_string(s):
                 # Split into token and text parts, tokens are %Name
-                import re
+
                 parts_out = []
                 if not s:
                     return parts_out
@@ -1168,8 +1166,6 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
     if not hasattr(overlay, "load"):
         overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
 
-    print("DEBUG base type before final composite:", type(base))
-
     # Ensure base is a valid PIL Image (it may have been overwritten as a string path)
     if isinstance(base, str):
         # Only attempt reopen if it is a valid file path
@@ -1252,7 +1248,7 @@ def export_stills_and_get_new_files(still_album, stills_list, output_path, prefi
 
 def parse_resolution_str(res_str):
     """
-    Convertit "1920x1080" en (1920,1080). Retourne (None,None) si inconnu.
+    Convertit "1920x1080" en (1920,1080). Retourne (None, None) si inconnu.
     """
     if not res_str:
         return None, None
@@ -1281,7 +1277,7 @@ def get_source_resolution_and_tc_at_playhead(timeline, timeline_abs_frame, frame
 
     # Résolution source
     src_res = (props.get("Resolution") or props.get("Format") or "").strip()
-    # Certains Resolve renvoient parfois "1920 x 1080"
+    # Certains Resolve renvoient parfois "1920 x 1080".
     if src_res:
         w, h = parse_resolution_str(src_res.replace(" x ", "x").replace("X", "x"))
         if w and h:
@@ -1455,9 +1451,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         main_window.Raise()
         exit()
 
-    left_column_minimum_size = {100, 0}
-    left_column_maximum_size = {100, 16777215}
-
     window_flags = {"Dialog": True}
 
     def hline(height=1, color="#444"):
@@ -1477,31 +1470,24 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             "WindowTitle": win_name,
             "WindowFlags": window_flags,
             "WindowModality": "ApplicationModal",
-            "FixedSize": [580, 360],
+            "FixedSize": [600, 380],
             "Events": {"Close": True, "KeyPress": True},
         },
         ui.VGroup(
-            {"MinimumSize": [580, 360], "MaximumSize": [580, 360], "Weight": 1},
+            {"MinimumSize": [600, 380], "MaximumSize": [600, 380], "Weight": 1},
             [
+              ui.HGroup({"Weight": 1, "Spacing": 0}, [
+                ui.HGap(14),
+                ui.VGroup({"Weight": 1, "Spacing": 6}, [
+                # ── Markers ──────────────────────────────────────────────
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label(
-                            {
-                                "Weight": 0,
-                                "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                "MinimumSize": left_column_minimum_size,
-                                "MaximumSize": left_column_maximum_size,
-                                "Text": "Timeline markers",
-                            }
-                        ),
                         ui.ComboBox({"Weight": 1, "ID": marker_combo_boxID}),
                         ui.Label(
                             {
                                 "Weight": 0,
                                 "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                "MinimumSize": [95, 0],
-                                "MaximumSize": [95, 16777215],
                                 "Text": "Restrict to In/Out",
                             }
                         ),
@@ -1509,10 +1495,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                             {
                                 "Weight": 0,
                                 "ID": restrict_to_in_out_check_boxID,
+                                "Text": "",
                                 "Checked": settings["restrict_to_in_out"],
                                 "Events": {"Toggled": True},
-                                "MinimumSize": [90, 0],
-                                "MaximumSize": [90, 16777215],
+                                "MinimumSize": [20, 0],
+                                "MaximumSize": [20, 16777215],
                             }
                         ),
                     ],
@@ -1520,18 +1507,16 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                  "MaximumSize": left_column_maximum_size}),
                         ui.Label({"Weight": 1, "ID": info_labelID}),
                     ],
                 ),
                 ui.VGap(6),
                 hline(1),
+                ui.VGap(4),
+                # ── Rename ───────────────────────────────────────────────
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                  "MaximumSize": left_column_maximum_size}),
                         ui.CheckBox(
                             {
                                 "Weight": 1,
@@ -1542,28 +1527,30 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                             }
                         ),
                         ui.Label(
-                            {"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                             "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Style"}
+                            {
+                                "Weight": 0,
+                                "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                "MinimumSize": [40, 0],
+                                "MaximumSize": [40, 16777215],
+                                "Text": "Style",
+                            }
                         ),
-                        ui.ComboBox({"Weight": 1, "ID": rename_format_combo_boxID, "MinimumSize": [60, 0],
-                                     "MaximumSize": [60, 16777215]}),
+                        ui.ComboBox(
+                            {
+                                "Weight": 0,
+                                "ID": rename_format_combo_boxID,
+                                "MinimumSize": [70, 0],
+                                "MaximumSize": [70, 16777215],
+                            }
+                        ),
                     ],
                 ),
                 ui.VGroup(
-                    {"ID": rename_options_groupID, "Weight": 0, "Enabled": settings.get("rename_with_meta", False)},
+                    {"ID": rename_options_groupID, "Weight": 0, "Spacing": 6, "Enabled": settings.get("rename_with_meta", False)},
                     [
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label(
-                                    {
-                                        "Weight": 0,
-                                        "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                        "MinimumSize": left_column_minimum_size,
-                                        "MaximumSize": left_column_maximum_size,
-                                        "Text": "Fallback Shot",
-                                    }
-                                ),
                                 ui.CheckBox(
                                     {
                                         "Weight": 1,
@@ -1584,7 +1571,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                 ),
                                 ui.LineEdit(
                                     {
-                                        "Weight": 1,
+                                        "Weight": 0,
                                         "ID": rename_sep_line_editID,
                                         "Text": settings.get("rename_scene_shot_separator", "/"),
                                         "Alignment": {"AlignHCenter": True},
@@ -1596,123 +1583,166 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         )
                     ],
                 ),
-                ui.VGap(6),
+                ui.VGap(4),
                 hline(1),
+                ui.VGap(4),
+                # ── Export ───────────────────────────────────────────────
                 ui.HGroup(
                     {"Weight": 0, "Spacing": 10},
                     [
-                        ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                  "MaximumSize": left_column_maximum_size}),
-                        ui.CheckBox({"Weight": 1, "ID": export_check_boxID, "Text": "Export grabbed stills",
-                                     "Checked": settings["export"], "Events": {"Toggled": True}}),
-
-                        ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                  "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Format"}),
-                        ui.ComboBox({"Weight": 1, "ID": format_combo_boxID, "MinimumSize": [120, 0],
-                                     "MaximumSize": [140, 16777215]}),
-                        ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
-                            [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox(
-                                    {"Weight": 0, "ID": export_edl_markers_check_boxID, "Text": "Export EDL markers",
-                                     "Checked": settings.get("export_edl_markers", False),
-                                     "Events": {"Toggled": True}}),
-                                ui.HGap(0, 1),
-                            ],
+                        ui.CheckBox(
+                            {
+                                "Weight": 0,
+                                "ID": export_check_boxID,
+                                "Text": "Export grabbed stills",
+                                "Checked": settings["export"],
+                                "Events": {"Toggled": True},
+                            }
+                        ),
+                        ui.Label(
+                            {
+                                "Weight": 0,
+                                "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                "MinimumSize": [55, 0],
+                                "MaximumSize": [55, 16777215],
+                                "Text": "Format",
+                            }
+                        ),
+                        ui.ComboBox(
+                            {
+                                "Weight": 1,
+                                "ID": format_combo_boxID,
+                                "MinimumSize": [140, 0],
+                                "MaximumSize": [180, 16777215],
+                            }
+                        ),
+                        ui.CheckBox(
+                            {
+                                "Weight": 0,
+                                "ID": export_edl_markers_check_boxID,
+                                "Text": "Export EDL markers",
+                                "Checked": settings.get("export_edl_markers", False),
+                                "Events": {"Toggled": True},
+                            }
                         ),
                     ],
                 ),
                 ui.VGap(2),
                 ui.VGroup(
-                    {"ID": export_settingsID, "Weight": 0, "Enabled": settings["export"]},
+                    {"ID": export_settingsID, "Weight": 0, "Spacing": 6, "Enabled": settings["export"]},
                     [
+                        # Path + Browse
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                          "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size, "Text": "Export to"}),
-                                ui.LineEdit({"Weight": 1, "ID": export_to_line_editID, "Text": settings["export_to"]}),
-                                ui.Button({"Weight": 0, "ID": browse_buttonID, "Text": "Browse", "AutoDefault": False}),
-                            ],
-                        ),
-                        ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
-                            [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": create_timeline_folder_check_boxID,
-                                             "Text": "Create Folder with timeline name",
-                                             "Checked": settings["create_export_folder_timeline_name"],
-                                             "Events": {"Toggled": True}}),
-                                ui.CheckBox(
-                                    {"Weight": 0, "ID": create_sub_folder_check_boxID, "Text": "Create sub folder:",
-                                     "Checked": settings["create_sub_folder"], "Events": {"Toggled": True}}),
-                                ui.LineEdit({"Weight": 1, "ID": sub_folder_name_line_editID,
-                                             "Text": settings["sub_folder_name"], "MinimumSize": [100, 0],
-                                             "MaximumSize": [100, 16777215]}),
-                            ],
-                        ),
-                        ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
-                            [
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": resize_check_boxID, "Text": "Resize stills in %",
-                                             "Checked": settings["resize_stills"], "Events": {"Toggled": True}}),
-                                ui.Label({"Weight": 0, "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                          "MinimumSize": [60, 0], "MaximumSize": [60, 16777215], "Text": "Resize to"}),
                                 ui.LineEdit(
-                                    {"Weight": 1, "ID": resize_line_editID, "Text": str(settings["resize_percentage"]),
-                                     "MinimumSize": [40, 0], "MaximumSize": [40, 16777215],
-                                     "Alignment": {"AlignHCenter": True}}),
-                                ui.Label({"Weight": 0, "Text": "%"}),
-                                ui.CheckBox({"Weight": 0, "ID": resize_replace_check_boxID, "Text": "Replace originals",
-                                             "Checked": settings["replace_original_exports"],
-                                             "Events": {"Toggled": True}}),
-                                ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size,
-                                          "MaximumSize": left_column_maximum_size}),
-                                ui.CheckBox({"Weight": 0, "ID": remove_drx_check_boxID, "Text": "Remove DRX files",
-                                             "Checked": settings["remove_drx"], "Events": {"Toggled": True}}),
+                                    {"Weight": 1, "ID": export_to_line_editID, "Text": settings["export_to"]}
+                                ),
+                                ui.Button(
+                                    {"Weight": 0, "ID": browse_buttonID, "Text": "Browse", "AutoDefault": False}
+                                ),
                             ],
                         ),
-                        # ui.HGroup(
-                        #     {"ID": burnin_setting_boxID, "Weight": 0, "Spacing": 10},
-                        #     [
-                        #         ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                        #         ui.CheckBox({"Weight": 0, "ID": burnin_check_boxID, "Text": "Burnins", "Checked": settings.get("burnin", False), "Events": {"Toggled": True}}),
-                        #     ],
-                        # ),
-                        # ui.HGroup(
-                        #     {"ID": compress_setting_boxID, "Weight": 0, "Spacing": 10, "Enabled": settings["format"] == "jpg"},
-                        #     [
-                        #         ui.Label({"Weight": 0, "MinimumSize": left_column_minimum_size, "MaximumSize": left_column_maximum_size}),
-                        #         ui.CheckBox({"Weight": 0, "ID": compress_check_boxID, "Text": "Compress JPEG with ImageOptim", "Checked": settings["compress"], "Events": {"Toggled": True}}),
-                        #     ],
-                        # ),
+                        # Create folder options
+                        ui.HGroup(
+                            {"Weight": 0, "Spacing": 10},
+                            [
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": create_timeline_folder_check_boxID,
+                                        "Text": "Create Folder with timeline name",
+                                        "Checked": settings["create_export_folder_timeline_name"],
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": create_sub_folder_check_boxID,
+                                        "Text": "Create sub folder:",
+                                        "Checked": settings["create_sub_folder"],
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.LineEdit(
+                                    {
+                                        "Weight": 1,
+                                        "ID": sub_folder_name_line_editID,
+                                        "Text": settings["sub_folder_name"],
+                                        "MinimumSize": [100, 0],
+                                        "MaximumSize": [120, 16777215],
+                                    }
+                                ),
+                            ],
+                        ),
+                        # Resize + Remove DRX
+                        ui.HGroup(
+                            {"Weight": 0, "Spacing": 10},
+                            [
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": resize_check_boxID,
+                                        "Text": "Resize stills in %",
+                                        "Checked": settings["resize_stills"],
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.Label(
+                                    {
+                                        "Weight": 0,
+                                        "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                        "MinimumSize": [60, 0],
+                                        "MaximumSize": [60, 16777215],
+                                        "Text": "Resize to",
+                                    }
+                                ),
+                                ui.LineEdit(
+                                    {
+                                        "Weight": 0,
+                                        "ID": resize_line_editID,
+                                        "Text": str(settings["resize_percentage"]),
+                                        "MinimumSize": [40, 0],
+                                        "MaximumSize": [40, 16777215],
+                                        "Alignment": {"AlignHCenter": True},
+                                    }
+                                ),
+                                ui.Label({"Weight": 0, "Text": "%"}),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": resize_replace_check_boxID,
+                                        "Text": "Replace originals",
+                                        "Checked": settings["replace_original_exports"],
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": remove_drx_check_boxID,
+                                        "Text": "Remove DRX files",
+                                        "Checked": settings["remove_drx"],
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.HGap(0, 1),
+                            ],
+                        ),
+                        # Burnins + Compress
                         ui.HGroup(
                             {"ID": compress_setting_boxID, "Weight": 0, "Spacing": 10},
                             [
-                                ui.Label({
-                                    "Weight": 0,
-                                    "MinimumSize": left_column_minimum_size,
-                                    "MaximumSize": left_column_maximum_size
-                                }),
-
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
                                         "ID": fit_canvas_check_boxID,
-                                        "Text": "Fit into FHD canvas",
+                                        "Text": "Fit to FHD canvas",
                                         "Checked": settings.get("fit_to_1920_canvas", False),
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-
-                                ui.HGap(12),
-
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -1722,9 +1752,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-
-                                ui.HGap(12),
-
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -1734,13 +1761,13 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-
                                 ui.HGap(0, 1),
                             ],
-                        )
+                        ),
                     ],
                 ),
-                ui.VGap(6),
+                ui.VGap(2),
+                # ── Buttons ──────────────────────────────────────────────
                 ui.HGroup(
                     {
                         "Weight": 0,
@@ -1750,8 +1777,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                             {
                                 min-height: 22px;
                                 max-height: 22px;
-                                min-width: 108px;
-                                max-width: 108px;
+                                min-width: 120px;
+                                max-width: 120px;
                             }
                         """,
                     },
@@ -1761,6 +1788,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ui.Button({"Weight": 0, "ID": start_buttonID, "Text": "Start", "AutoDefault": False}),
                     ],
                 ),
+                ]),  # end inner VGroup
+                ui.HGap(4),
+              ]),  # end HGroup wrapper
             ],
         ),
     )
@@ -1805,7 +1835,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[burnin_check_boxID].Enabled = export_on
         window_items[fit_canvas_check_boxID].Enabled = export_on
 
-        # Compress: uniquement si export fichier + jpg + ImageOptim installé
+        # Compress : uniquement si export fichier + jpg + ImageOptim installé
         compress_enabled = export_on and (settings["format"] == "jpg") and detect_system_and_image_optim_installed()
         window_items[compress_check_boxID].Enabled = compress_enabled
 
@@ -2183,8 +2213,6 @@ if grab_stills:
                 ext=settings["format"],
             )
 
-            print("DEBUG ExportStills OK:", ok)
-            print("DEBUG new_files:", new_files)
 
             if ok and new_files:
                 for img_path in new_files:
@@ -2231,9 +2259,9 @@ if settings.get("remove_drx", False) and settings.get("export", False):
                         os.remove(os.path.join(root, fn))
                     except Exception as e:
                         print(f"Could not remove DRX {fn}: {e}")
-
 # --- OPTIONAL CLEANUP: remove metadata JSON after processing ---
 if settings.get("export", False):
     delete_metadata_json(output_path, timeline.GetName())
+
 
 restore_page(initial_state)

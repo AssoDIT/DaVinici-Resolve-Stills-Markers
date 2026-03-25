@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Burnin Settings</title>
+  <title>ADIT - Burnin Settings</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app">
     <header class="topbar">
       <div class="title"><img src="ADIT-Avatar-dark-2.png" style="width:5em"> • DaVinci Resolve Stills Burn In</div>
-
+      
       <div class="status" id="saveStatus">Disconnected</div>
       <button id="btnHelp" class="helpBtn" type="button">Help</button>
     </header>
@@ -23,6 +23,7 @@
           Click a metadata item to add it to the layout.
         </div>
 
+        <input id="tokenSearch" type="search" placeholder="Filter tokens…" class="tokenSearch" />
         <div id="metadataTokenList" class="tokenList"></div>
 
       </section>
@@ -77,29 +78,16 @@
           </div>
         </div>
 
-        <h3>Safe Guides</h3>
-
-        <div class="safeControls">
-          <div class="safeField">
-            <label>
-              <input id="safeGuides" type="checkbox" checked /> Enable
-            </label>
-          </div>
-
-          <div class="safeField">
-            <label>Outer</label>
-            <input id="safeGuideOuter" type="range" min="0" max="0.2" step="0.005" value="0.05" />
-          </div>
-
-          <div class="safeField">
-            <label>Inner</label>
-            <input id="safeGuideInner" type="range" min="0" max="0.2" step="0.005" value="0.10" />
-          </div>
-        </div>
       </section>
 
       <section class="panel right">
-        <h2>Token Editor</h2>
+        <div class="panelHeaderRow">
+          <h2>Token Editor</h2>
+          <button id="btnResetLayout" type="button" class="resetBtn">Reset</button>
+        </div>
+        <div class="row" style="margin-bottom:8px">
+          <button id="btnPresets" type="button" class="presetsBtn">Resolve Presets</button>
+        </div>
         <div class="sep"></div>
         <h2>Burn-in Layout</h2>
         <div class="hint">
@@ -123,13 +111,13 @@
         <label class="row sliderRow">
           <span>Position X</span>
           <input id="metaPosX" type="range" min="0" max="100" step="0.1" value="50" />
-          <span id="metaPosXVal" class="liveVal">50%</span>
+          <input id="metaPosXVal" class="liveVal liveValInput" type="number" min="0" max="100" step="0.1" value="50" />
         </label>
 
         <label class="row sliderRow">
           <span>Position Y</span>
           <input id="metaPosY" type="range" min="0" max="100" step="0.1" value="50" />
-          <span id="metaPosYVal" class="liveVal">50%</span>
+          <input id="metaPosYVal" class="liveVal liveValInput" type="number" min="0" max="100" step="0.1" value="50" />
         </label>
 
         <label class="row">
@@ -157,6 +145,12 @@
           <span id="metaOpacityVal" class="liveVal">0.50</span>
         </label>
 
+        <label class="row sliderRow">
+          <span>BG Opacity</span>
+          <input id="metaBgOpacity" type="range" min="0" max="1" step="0.01" value="0" />
+          <span id="metaBgOpacityVal" class="liveVal">0.00</span>
+        </label>
+
         <label class="row">
           <span>Font</span>
           <select id="metaFontFamily"></select>
@@ -174,13 +168,33 @@
 
         <div class="row actions">
           <button id="btnReload" type="button">Reload JSON</button>
-          <button id="btnSave" type="button">Save now</button>
         </div>
+        </div>
+
+        <div class="sep"></div>
+        <h3>Export to Resolve</h3>
+        <label class="row">
+          <span>Preset name</span>
+          <input id="exportPresetName" type="text" placeholder="My Preset" value="My Preset" />
+        </label>
+        <div class="row actions">
+          <button id="btnSendToResolve" type="button" class="sendBtn">Send to Resolve</button>
+          <button id="btnExportXml" type="button">Export XML</button>
         </div>
 
 
       </section>
     </main>
+
+  <!-- Presets Overlay -->
+  <div id="presetsOverlay" class="helpOverlay hidden">
+    <div class="helpModal presetsModal">
+      <button id="btnClosePresets" class="closeHelp">✕</button>
+      <h2>Resolve Slate Presets</h2>
+      <div id="presetsStatus" class="presetsStatus"></div>
+      <div id="presetsList"></div>
+    </div>
+  </div>
 
   <!-- Help Overlay -->
   <div id="helpOverlay" class="helpOverlay hidden">
@@ -188,48 +202,66 @@
       <button id="btnCloseHelp" class="closeHelp">✕</button>
       <h2>User Guide – Burn-in Builder</h2>
 
-      <h3>1. Add a Burn-in</h3>
-
+      <h3>1. Add a Burn-in Token</h3>
       <p>
-        Click a metadata item in the left column to add it to the layout.
-        It will immediately appear on the canvas and inside the "Burn-in Layout" list.
+        Click a metadata token in the left column to add it to the burn-in layout.
+        Favorites are shown first. Click <strong>Show more</strong> to access the full token library.
+        Use the search field to filter by name.
+      </p>
+      <p>
+        Click <strong>Custom</strong> to create a free-form text element using any combination of tokens.
       </p>
 
-      <h3>2. Selection & Movement</h3>
-
+      <h3>2. Selection, Movement & Deletion</h3>
       <ul>
-        <li>Click an element on the canvas to select it.</li>
-        <li>Drag it with the mouse to change its position.</li>
-        <li>Use Position X / Y sliders for precise adjustments.</li>
+        <li>Click an element on the canvas to select it and show its properties.</li>
+        <li>Drag it on the canvas to reposition.</li>
+        <li>Use Position X / Y sliders for precise placement (0–100%).</li>
+        <li><strong>Right-click</strong> an element in the layout list to delete it.</li>
+        <li>Click <strong>Reset</strong> to remove all elements at once.</li>
       </ul>
 
       <h3>3. Custom Template</h3>
       <p>
-        Use the Template field to create a custom combination:
-        <code>%Scene / %Shot - %Take %Camera_#</code>
+        Use the Template field to build a composite line from multiple tokens:<br/>
+        <code>%Scene / %Shot - %Take  %Camera_#</code>
       </p>
       <p>
-        Any token prefixed with <strong>%</strong> will be replaced by its value
-        from the metadata JSON file.
+        Any <strong>%Key</strong> is replaced by its live metadata value.
+        Combine tokens with any separator text you like.
       </p>
 
       <h3>4. Appearance</h3>
       <ul>
-        <li>Font Size in points (pt).</li>
-        <li>Font selection (TTF/OTF loading supported).</li>
-        <li>Color, Opacity and Bold supported.</li>
+        <li><strong>Font Size</strong> in points (pt) — scales with the 1080-line reference.</li>
+        <li><strong>Text Color</strong> — pick any hex color.</li>
+        <li><strong>Opacity</strong> — text transparency (0 = invisible, 1 = opaque).</li>
+        <li><strong>BG Opacity</strong> — black background box behind the text (0 = no box).</li>
+        <li><strong>Font</strong> — choose from system fonts or load a TTF/OTF file.</li>
+        <li><strong>Bold</strong> — toggle bold weight.</li>
+        <li><strong>Align</strong> — Left / Center / Right relative to the anchor point.</li>
       </ul>
 
-      <h3>5. Keyboard Shortcuts</h3>
+      <h3>5. Exporting to Resolve</h3>
+      <ul>
+        <li><strong>Send to Resolve</strong> — writes the preset directly into Resolve's SlatePresetList.xml. Reload Resolve's burn-in dialog to see it.</li>
+        <li><strong>Export XML</strong> — downloads a <code>.xml</code> file you can import manually via Resolve's burn-in preset menu.</li>
+        <li>Enter a <strong>Preset name</strong> before exporting. If a preset with the same name already exists it will be replaced.</li>
+        <li>Resolve supports max 3 Custom Text slots (Custom Text1/2/3). A warning is shown if you exceed this.</li>
+      </ul>
+
+      <h3>6. Resolve Presets</h3>
+      <p>
+        Click <strong>Resolve Presets</strong> to browse all presets currently saved in Resolve.
+        Expand a preset to see its elements, then click <strong>Import into layout</strong> to load it.
+      </p>
+
+      <h3>7. Keyboard Shortcuts</h3>
       <ul>
         <li><strong>Cmd/Ctrl + S</strong> → Save JSON.</li>
         <li><strong>Cmd/Ctrl + Z</strong> → Undo last action.</li>
+        <li><strong>Escape</strong> → Close any open overlay.</li>
       </ul>
-
-      <h3>6. Safe Guides</h3>
-      <p>
-        Enable guides to visualize broadcast safe margins.
-      </p>
     </div>
   </div>
 
@@ -243,6 +275,26 @@
       margin-left:8px;
       text-align:right;
       font-variant-numeric: tabular-nums;
+    }
+    .liveValInput{
+      width:54px;
+      background:#111;
+      color:#ccc;
+      border:1px solid #333;
+      border-radius:3px;
+      padding:2px 4px;
+      text-align:right;
+      font-size:12px;
+      -moz-appearance:textfield;
+    }
+    .liveValInput:focus{
+      outline:none;
+      border-color:#006D78;
+    }
+    .liveValInput::-webkit-outer-spin-button,
+    .liveValInput::-webkit-inner-spin-button{
+      -webkit-appearance:none;
+      margin:0;
     }
     .sliderRow{
       display:grid;
@@ -283,15 +335,16 @@
     }
 
     .helpModal{
-      background:#4a4a4a;
-      color:#969696;
+      position:relative;
+      background:#2e2e2e;
+      color:#aaa;
       width:800px;
       max-width:90%;
       max-height:85vh;
       overflow-y:auto;
-      padding:30px;
-      border-radius:15px;
-      box-shadow:none;
+      padding:32px 36px 36px;
+      border-radius:10px;
+      box-shadow:0 8px 40px rgba(0,0,0,0.6);
     }
 
     .helpModal h2{
@@ -345,28 +398,216 @@
     .sliderInline input[type="range"]{
       width:100%;
     }
-    .safeControls{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:20px;
-      align-items:stretch;
-    }
-
-    .safeField{
-      display:flex;
-      flex-direction:column;
-      justify-content:flex-start;
-      gap:6px;
-      height:100%;
-    }
-
-    .safeField input[type="range"]{
-      width:100%;
-    }
     .tokenControls.hidden{
       display:none;
     }
+
+    /* ── Token search filter ── */
+    .tokenSearch {
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: #0a0a0a;
+      color: #ddd;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 12px;
+      outline: none;
+    }
+    .tokenSearch:focus {
+      border-color: #006D78;
+    }
+
+    /* ---- Presets modal ---- */
+    .presetsModal {
+      width: 860px;
+    }
+    .presetsStatus {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 12px;
+    }
+    .presetBlock {
+      margin-bottom: 10px;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .presetHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #1e1e1e;
+      cursor: pointer;
+      user-select: none;
+    }
+    .presetHeader:hover {
+      background: #262626;
+    }
+    .presetName {
+      font-weight: bold;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+    .presetHeaderRight {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .presetCount {
+      font-size: 11px;
+      color: #666;
+    }
+    .presetToggle {
+      font-size: 12px;
+      color: #888;
+    }
+    .presetBody {
+      display: none;
+      padding: 4px 14px 12px;
+      background: #141414;
+    }
+    .presetBody.open {
+      display: block;
+    }
+    .presetElem {
+      display: grid;
+      grid-template-columns: 110px 1fr 120px 140px;
+      gap: 10px;
+      align-items: start;
+      padding: 8px 0;
+      border-bottom: 1px solid #252525;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .presetElem:last-child {
+      border-bottom: none;
+    }
+    .presetElemType {
+      color: #006D78;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .presetElemText {
+      color: #ddd;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .presetElemText.auto {
+      color: #555;
+      font-style: italic;
+    }
+    .presetElemFont {
+      font-size: 11px;
+      color: #777;
+      white-space: nowrap;
+    }
+    .presetElemPos {
+      font-size: 11px;
+      color: #666;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .btnImportPreset {
+      margin-top: 8px;
+      background: #006D78;
+      color: #fff;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btnImportPreset:hover {
+      background: #008899;
+    }
+    .panelHeaderRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0;
+    }
+    .panelHeaderRow h2 {
+      margin: 0;
+    }
+    .resetBtn {
+      background: #2a0a0a;
+      color: #cc4444;
+      border: 1px solid #552222;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      border-radius: 3px;
+    }
+    .resetBtn:hover {
+      background: #400f0f;
+    }
+    .presetsBtn {
+      width: 100%;
+      background: #0a1a1a;
+      color: #006D78;
+      border: 1px solid #006D78;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      border-radius: 3px;
+    }
+    .presetsBtn:hover {
+      background: #0d2222;
+    }
+    .sendBtn {
+      background: #006D78;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    .sendBtn:hover {
+      background: #008899;
+    }
+    .tokenFavorites {
+      margin-bottom: 4px;
+    }
+    .tokenMore {
+      margin-top: 4px;
+    }
+    .showMoreBtn {
+      width: 100%;
+      background: none;
+      border: 1px dashed #333;
+      color: #666;
+      padding: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      border-radius: 3px;
+      margin-top: 4px;
+    }
+    .showMoreBtn:hover {
+      color: #999;
+      border-color: #555;
+    }
+  .footer{
+    text-align:center;
+    padding:12px 0 8px;
+    font-size:11px;
+    color:#444;
+  }
+  .footer a{
+    color:#555;
+    text-decoration:none;
+  }
+  .footer a:hover{
+    color:#888;
+  }
   </style>
+
+  <footer class="footer">
+    Powered by <a href="https://be4post.com" target="_blank" rel="noopener">Be4Post</a>
+  </footer>
+
   </div>
 </body>
 </html>
