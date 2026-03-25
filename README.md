@@ -1,5 +1,7 @@
 # Resolve Stills Markers Exporter
 
+![Resolve plugin Window](Stills_Marker_python_settings/burnin_ui/examples/Resolve_plugin_Window.png)        
+
 ## Overview
 
 Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration plugin that allows you to:
@@ -83,6 +85,8 @@ Workspace → Workflow Integration
 ---
 
 ## Burn-In Web Editor
+
+![Burn In Web Editor capture](Stills_Marker_python_settings/burnin_ui/examples/Burnin_Preset_UI_in_web_server.png)
 
 The plugin includes a web-based burn-in layout editor with:
 

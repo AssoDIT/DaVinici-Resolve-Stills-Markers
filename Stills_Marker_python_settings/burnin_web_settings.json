@@ -1,0 +1,124 @@
+{
+  "burnin_font_path": "",
+  "burnin_opacity": 0.5,
+  "burnin_font_family": "Arial",
+  "preview": {
+    "ratio": 2.39,
+    "mode": "crop",
+    "mask_style": "bars_lines",
+    "mask_opacity": 0.5,
+    "safe_guides": {
+      "enabled": false,
+      "style": "lines",
+      "opacity": 1.0
+    }
+  },
+  "elements": [
+    {
+      "id": "",
+      "key": "Source_TC",
+      "x": 0.5,
+      "y": 0.9444444179534912,
+      "font_size_pt": 28,
+      "opacity": 0.800000011920929,
+      "align": "center",
+      "font_family": "Arial",
+      "font_weight": "normal",
+      "color": "#7e8080",
+      "bg_opacity": 0.0
+    },
+    {
+      "id": "",
+      "key": "custom",
+      "x": 0.010416666977107525,
+      "y": 0.01975856911878574,
+      "font_size_pt": 28,
+      "opacity": 0.699999988079071,
+      "align": "left",
+      "font_family": "Arial",
+      "font_weight": "normal",
+      "color": "#7e8080",
+      "bg_opacity": 0.0,
+      "template_custom": "%Clipname",
+      "template_parts": {
+        "parts": [
+          {
+            "type": "token",
+            "value": "Clipname"
+          }
+        ]
+      },
+      "custom_tokens": [
+        "Clipname"
+      ]
+    },
+    {
+      "id": "",
+      "key": "custom",
+      "x": 0.010416666977107525,
+      "y": 0.9407407641410828,
+      "font_size_pt": 28,
+      "opacity": 0.5,
+      "align": "left",
+      "font_family": "Arial",
+      "font_weight": "normal",
+      "color": "#7e8080",
+      "bg_opacity": 0.0,
+      "template_custom": "%Resolutionpx",
+      "template_parts": {
+        "parts": [
+          {
+            "type": "token",
+            "value": "Resolutionpx"
+          }
+        ]
+      },
+      "custom_tokens": [
+        "Resolutionpx"
+      ]
+    },
+    {
+      "id": "",
+      "key": "custom",
+      "x": 0.99,
+      "y": 0.01975856911878574,
+      "font_size_pt": 28,
+      "opacity": 0.5,
+      "align": "right",
+      "font_family": "Arial",
+      "font_weight": "normal",
+      "color": "#7e8080",
+      "bg_opacity": 0.0,
+      "template_custom": "%Scene/%Shot-%Take",
+      "template_parts": {
+        "parts": [
+          {
+            "type": "token",
+            "value": "Scene"
+          },
+          {
+            "type": "text",
+            "value": "/"
+          },
+          {
+            "type": "token",
+            "value": "Shot"
+          },
+          {
+            "type": "text",
+            "value": "-"
+          },
+          {
+            "type": "token",
+            "value": "Take"
+          }
+        ]
+      },
+      "custom_tokens": [
+        "Scene",
+        "Shot",
+        "Take"
+      ]
+    }
+  ]
+}
