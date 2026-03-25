@@ -1281,13 +1281,13 @@ function selectElement(index){
 
   // Sync UI fields
   if(els.metaPosX){
-    els.metaPosX.value = ((item.x || 0.5) * 100).toFixed(1);
+    els.metaPosX.value = ((item.x ?? 0.5) * 100).toFixed(1);
   }
   if(els.metaPosY){
-    els.metaPosY.value = ((item.y || 0.5) * 100).toFixed(1);
+    els.metaPosY.value = ((item.y ?? 0.5) * 100).toFixed(1);
   }
-  if(els.metaPosXVal) els.metaPosXVal.value = ((item.x || 0.5) * 100).toFixed(1);
-  if(els.metaPosYVal) els.metaPosYVal.value = ((item.y || 0.5) * 100).toFixed(1);
+  if(els.metaPosXVal) els.metaPosXVal.value = ((item.x ?? 0.5) * 100).toFixed(1);
+  if(els.metaPosYVal) els.metaPosYVal.value = ((item.y ?? 0.5) * 100).toFixed(1);
 
   if(els.metaAlign) els.metaAlign.value = item.align || "center";
   if(els.metaFontSize) els.metaFontSize.value = item.font_size_pt || 24;
@@ -1753,8 +1753,8 @@ async function loadFromServer(){
     // Ensure slider % labels are always updated on load.
     if(state.selectedIndex != null){
       const item = state.elements[state.selectedIndex];
-      if(els.metaPosXVal) els.metaPosXVal.value = ((item.x || 0.5) * 100).toFixed(1);
-      if(els.metaPosYVal) els.metaPosYVal.value = ((item.y || 0.5) * 100).toFixed(1);
+      if(els.metaPosXVal) els.metaPosXVal.value = ((item.x ?? 0.5) * 100).toFixed(1);
+      if(els.metaPosYVal) els.metaPosYVal.value = ((item.y ?? 0.5) * 100).toFixed(1);
     }
     render();
     setStatus("Loaded","ok");

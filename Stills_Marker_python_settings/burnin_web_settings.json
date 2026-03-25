@@ -17,79 +17,42 @@
     {
       "id": "",
       "key": "Source_TC",
-      "x": 0.5,
-      "y": 0.9444444179534912,
-      "font_size_pt": 28,
-      "opacity": 0.800000011920929,
-      "align": "center",
-      "font_family": "Arial",
+      "x": 0.8489583134651184,
+      "y": 0.9750000238418579,
+      "font_size_pt": 24,
+      "opacity": 0.5,
+      "align": "left",
+      "font_family": "Courier New",
       "font_weight": "normal",
-      "color": "#7e8080",
+      "color": "#ffffff",
+      "bg_opacity": 0.0
+    },
+    {
+      "id": "",
+      "key": "Clipname",
+      "x": 0.449,
+      "y": 0.9750000238418579,
+      "font_size_pt": 24,
+      "opacity": 0.5,
+      "align": "left",
+      "font_family": "Courier New",
+      "font_weight": "normal",
+      "color": "#ffffff",
       "bg_opacity": 0.0
     },
     {
       "id": "",
       "key": "custom",
-      "x": 0.010416666977107525,
-      "y": 0.01975856911878574,
-      "font_size_pt": 28,
-      "opacity": 0.699999988079071,
-      "align": "left",
-      "font_family": "Arial",
-      "font_weight": "normal",
-      "color": "#7e8080",
-      "bg_opacity": 0.0,
-      "template_custom": "%Clipname",
-      "template_parts": {
-        "parts": [
-          {
-            "type": "token",
-            "value": "Clipname"
-          }
-        ]
-      },
-      "custom_tokens": [
-        "Clipname"
-      ]
-    },
-    {
-      "id": "",
-      "key": "custom",
-      "x": 0.010416666977107525,
-      "y": 0.9407407641410828,
-      "font_size_pt": 28,
+      "x": 0.0,
+      "y": 0.0,
+      "font_size_pt": 24,
       "opacity": 0.5,
       "align": "left",
-      "font_family": "Arial",
+      "font_family": "Courier New",
       "font_weight": "normal",
-      "color": "#7e8080",
+      "color": "#ffffff",
       "bg_opacity": 0.0,
-      "template_custom": "%Resolutionpx",
-      "template_parts": {
-        "parts": [
-          {
-            "type": "token",
-            "value": "Resolutionpx"
-          }
-        ]
-      },
-      "custom_tokens": [
-        "Resolutionpx"
-      ]
-    },
-    {
-      "id": "",
-      "key": "custom",
-      "x": 0.99,
-      "y": 0.01975856911878574,
-      "font_size_pt": 28,
-      "opacity": 0.5,
-      "align": "right",
-      "font_family": "Arial",
-      "font_weight": "normal",
-      "color": "#7e8080",
-      "bg_opacity": 0.0,
-      "template_custom": "%Scene/%Shot-%Take",
+      "template_custom": "%Scene / %Shot - %Take",
       "template_parts": {
         "parts": [
           {
@@ -98,7 +61,7 @@
           },
           {
             "type": "text",
-            "value": "/"
+            "value": " / "
           },
           {
             "type": "token",
@@ -106,7 +69,7 @@
           },
           {
             "type": "text",
-            "value": "-"
+            "value": " - "
           },
           {
             "type": "token",

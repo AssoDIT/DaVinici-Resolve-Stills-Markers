@@ -1199,6 +1199,40 @@ ui = fusion.UIManager
 dispatcher = bmd.UIDispatcher(ui)
 
 
+def show_alert(message):
+    """Display a simple modal alert dialog and block until the user clicks OK."""
+    win_id = "AlertDialog"
+    existing = ui.FindWindow(win_id)
+    if existing:
+        existing.Show()
+        existing.Raise()
+        return
+
+    win = dispatcher.AddWindow(
+        {"ID": win_id, "WindowTitle": "Stills Markers", "Dialog": True,
+         "MinimumSize": [380, 120]},
+        ui.VGroup({"Spacing": 12, "Weight": 1}, [
+            ui.Label({"Text": message, "Alignment": {"AlignHCenter": True,
+                                                      "AlignVCenter": True}, "WordWrap": True,
+                      "StyleSheet": "font-size: 15px; padding: 8px;"}),
+            ui.HGroup({"Weight": 0, "Spacing": 0}, [
+                ui.HGap(),
+                ui.Button({"ID": "AlertOK", "Text": "OK", "MinimumSize": [80, 28]}),
+                ui.HGap(),
+            ]),
+        ])
+    )
+
+    def on_close(ev):
+        dispatcher.ExitLoop()
+
+    win.On[win_id].Close = on_close
+    win.On["AlertOK"].Clicked = on_close
+    win.Show()
+    dispatcher.RunLoop()
+    win.Hide()
+
+
 def _list_images_mtimes(folder, ext):
     if not folder or not os.path.isdir(folder):
         return {}
@@ -2009,6 +2043,10 @@ timeline_settings = {
 
 markers = timeline.GetMarkers()
 
+if not markers:
+    show_alert("No markers found on this timeline.\nAdd at least one marker before running the script.")
+    exit()
+
 if markers:
     marker_frames_all = sorted(markers.keys())
 
@@ -2053,6 +2091,8 @@ if markers:
         # -------------------------------------------------
         # Disk export path
         # -------------------------------------------------
+
+        output_path = None
 
         if settings.get("export", False):
 
