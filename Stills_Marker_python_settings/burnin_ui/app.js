@@ -724,8 +724,9 @@ function bindInputs(){
     });
   }
 
-  // Close with Escape key
+  // Keyboard shortcuts
   document.addEventListener("keydown", (ev)=>{
+    // Escape: close overlays
     if(ev.key === "Escape"){
       if(helpOverlay && !helpOverlay.classList.contains("hidden")){
         helpOverlay.classList.add("hidden");
@@ -733,6 +734,39 @@ function bindInputs(){
       if(presetsOverlay && !presetsOverlay.classList.contains("hidden")){
         presetsOverlay.classList.add("hidden");
       }
+    }
+
+    // Ignore shortcuts when typing in an input/textarea/select
+    const tag = document.activeElement && document.activeElement.tagName;
+    if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+    // Delete / Backspace: remove focused token
+    if((ev.key === "Delete" || ev.key === "Backspace") && state.selectedIndex != null){
+      ev.preventDefault();
+      pushUndoState();
+      state.elements.splice(state.selectedIndex, 1);
+      state.selectedIndex = null;
+      renderLayoutList();
+      render();
+      scheduleSave();
+      return;
+    }
+
+    // Arrow keys: move focused token by 0.1 step
+    const ARROW_STEP = 0.001;
+    const arrowMap = { ArrowLeft: [-ARROW_STEP, 0], ArrowRight: [ARROW_STEP, 0], ArrowUp: [0, -ARROW_STEP], ArrowDown: [0, ARROW_STEP] };
+    if(arrowMap[ev.key] && state.selectedIndex != null){
+      ev.preventDefault();
+      const item = state.elements[state.selectedIndex];
+      const [dx, dy] = arrowMap[ev.key];
+      item.x = clamp((item.x || 0) + dx, 0, 1);
+      item.y = clamp((item.y || 0) + dy, 0, 1);
+      if(els.metaPosX){ els.metaPosX.value = item.x * 100; }
+      if(els.metaPosXVal){ els.metaPosXVal.value = (item.x * 100).toFixed(1); }
+      if(els.metaPosY){ els.metaPosY.value = item.y * 100; }
+      if(els.metaPosYVal){ els.metaPosYVal.value = (item.y * 100).toFixed(1); }
+      render();
+      scheduleSave();
     }
   });
 

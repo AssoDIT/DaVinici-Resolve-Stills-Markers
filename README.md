@@ -101,6 +101,8 @@ The plugin includes a web-based burn-in layout editor with:
 - Direct JSON save
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
+- Delete selected token (Delete / Backspace)
+- Move selected token with arrow keys (1% step)
 
 Configuration file:
 
@@ -329,6 +331,8 @@ Mask opacity is respected during export.
 - Magnetic snapping with visual guides (Shift to disable)
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
+- Delete selected token (Delete / Backspace)
+- Move selected token with arrow keys (0.1% step)
 - Export burn-in preset as Resolve XML
 - Import/browse existing Resolve presets
 - Push preset directly into Resolve's SlatePresetList.xml
