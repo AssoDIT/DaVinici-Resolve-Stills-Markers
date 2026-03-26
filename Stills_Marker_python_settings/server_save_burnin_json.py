@@ -16,10 +16,23 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_DIR = BASE_DIR  # Stills_Marker_python_settings
 JSON_PATH = os.path.join(SETTINGS_DIR, "burnin_web_settings.json")
 
-XML_PATH = os.path.expanduser(
-    "~/Library/Application Support/Blackmagic Design/DaVinci Resolve/"
-    "Resolve Project Library/Resolve Projects/Settings/SlatePresetList.xml"
-)
+def _find_xml_path():
+    candidates = [
+        os.path.expanduser(
+            "~/Library/Application Support/Blackmagic Design/DaVinci Resolve/"
+            "Resolve Project Library/Resolve Projects/Settings/SlatePresetList.xml"
+        ),
+        os.path.expanduser(
+            "~/Library/Application Support/Blackmagic Design/DaVinci Resolve/"
+            "Resolve Disk Database/Resolve Projects/Settings/SlatePresetList.xml"
+        ),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]  # fallback to first path if neither exists
+
+XML_PATH = _find_xml_path()
 
 # Resolve internal type codes → human-readable label
 _RESOLVE_TYPE_LABELS = {
