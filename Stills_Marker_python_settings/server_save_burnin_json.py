@@ -515,7 +515,7 @@ def _our_template_to_resolve(template: str) -> str:
         key = m.group(1)
         resolve_name = _OUR_TO_RESOLVE_TOKENS.get(key, key.replace("_", " "))
         return f"%{{{resolve_name}}}"
-    return re.sub(r"%([A-Za-z0-9_#]+)", replace, template)
+    return re.sub(r"%([A-Za-z0-9#](?:[A-Za-z0-9_#]*[A-Za-z0-9#])?)", replace, template)
 
 
 def _hex_color_to_rgb_list(hex_color: str) -> list:

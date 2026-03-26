@@ -419,7 +419,7 @@ function normalizeTokenKey(raw){
 function compileTemplateParts(templateStr){
   const s = String(templateStr || "");
   const parts = [];
-  const re = /%[A-Za-z0-9_#]+/g;
+  const re = /%[A-Za-z0-9#](?:[A-Za-z0-9_#]*[A-Za-z0-9#])?/g;
   let last = 0;
   let m;
   while((m = re.exec(s))){
