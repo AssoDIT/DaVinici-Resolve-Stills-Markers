@@ -1,5 +1,23 @@
 const API_BASE = "http://127.0.0.1:8765";
 
+const OGC_PRESETS = {
+  arri_alexa35: [4608, 3164],
+  arri_alexalf: [4448, 3096],
+  sony_venice1: [6048, 4032],
+  sony_venice2: [8640, 5760],
+};
+
+function getOGCNativeRatio() {
+  const preset = state.open_gate_crop_preset || "arri_alexa35";
+  if (preset === "custom") {
+    const w = Number(state.open_gate_crop_custom_w) || 3;
+    const h = Number(state.open_gate_crop_custom_h) || 2;
+    return w / h;
+  }
+  const dims = OGC_PRESETS[preset] || [4608, 3164];
+  return dims[0] / dims[1];
+}
+
 const els = {
   saveStatus: document.getElementById("saveStatus"),
 
@@ -52,6 +70,7 @@ let state = {
   open_gate_crop_custom_w: 3,
   open_gate_crop_custom_h: 2,
   open_gate_safety: 100,
+  ogc_show_frameline: true,
 };
 
 // --- Undo / Redo Stacks ---
@@ -858,6 +877,7 @@ function bindInputs(){
     openGateCropPreset.addEventListener("change", (e)=>{
       state.open_gate_crop_preset = e.target.value;
       updateOpenGateCropUI();
+      render();
       scheduleSave();
     });
   }
@@ -865,6 +885,7 @@ function bindInputs(){
   if(openGateCropW){
     openGateCropW.addEventListener("input", (e)=>{
       state.open_gate_crop_custom_w = parseInt(e.target.value) || 3;
+      render();
       scheduleSave();
     });
   }
@@ -872,6 +893,7 @@ function bindInputs(){
   if(openGateCropH){
     openGateCropH.addEventListener("input", (e)=>{
       state.open_gate_crop_custom_h = parseInt(e.target.value) || 2;
+      render();
       scheduleSave();
     });
   }
@@ -879,7 +901,15 @@ function bindInputs(){
   if(openGateSafetyEl){
     openGateSafetyEl.addEventListener("input", (e)=>{
       state.open_gate_safety = parseFloat(e.target.value) || 100;
+      render();
       scheduleSave();
+    });
+  }
+  const ogcFramelineToggle = document.getElementById("ogcFramelineToggle");
+  if(ogcFramelineToggle){
+    ogcFramelineToggle.addEventListener("change", (e)=>{
+      state.ogc_show_frameline = e.target.checked;
+      render();
     });
   }
 
@@ -1669,6 +1699,42 @@ function render(){
   });
 
   ctx.globalAlpha = 1.0;
+
+  // --- OGC frameline ---
+  if(state.ogc_show_frameline !== false) {
+    const nativeRatio   = getOGCNativeRatio();
+    const deliveryRatio = 16 / 9;
+    const safetyF       = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+
+    // Canvas is 16:9 — native content is pillarboxed inside it
+    const contentW = H * nativeRatio;          // native content width on canvas
+    let cropW = contentW * safetyF;
+    let cropH = (contentW / deliveryRatio) * safetyF;
+
+    cropW = Math.min(cropW, W);
+    cropH = Math.min(cropH, H);
+    const fx = (W - cropW) / 2;
+    const fy = (H - cropH) / 2;
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 165, 0, 0.85)";
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([8, 4]);
+    ctx.strokeRect(fx, fy, cropW, cropH);
+
+    // Corner label
+    const safetyPct = Math.round(state.open_gate_safety ?? 100);
+    const preset    = state.open_gate_crop_preset || "arri_alexa35";
+    const label     = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
+    ctx.font        = "bold 11px Arial";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle   = "rgba(0,0,0,0.55)";
+    const lw        = ctx.measureText(label).width;
+    ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
+    ctx.fillStyle   = "rgba(255,165,0,0.95)";
+    ctx.fillText(label, fx + 8, fy + 19);
+    ctx.restore();
+  }
 
   // --- Lignes filigrane de snap (magnétisme) ---
   if (drag.active && (drag.snapAxisX !== null || drag.snapAxisY !== null)) {
