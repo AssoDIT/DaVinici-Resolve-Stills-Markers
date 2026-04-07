@@ -13,7 +13,9 @@ Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration plugin
 - Apply cinematic blanking (aspect ratio mask: bars, frame, or both)
 - Export marker-based EDL files
 - Remove DRX files automatically
-- Optionally compress exported images
+- Optionally compress exported images with ImageOptim
+- Open Gate Crop: extract 16:9 delivery area from native sensor stills (3:2, 4:3…) and upscale to 1920×1080
+- Open destination folder in Finder after export
 - Export burn-in presets as Resolve-compatible XML
 - Import and browse existing Resolve burn-in presets
 - Push presets directly into Resolve
@@ -91,13 +93,14 @@ Workspace → Workflow Integration
 The plugin includes a web-based burn-in layout editor with:
 
 - Drag & drop burn-in elements
-- Magnetic snapping during drag (Shift to disable)
+- Magnetic snapping during drag (Shift to disable) — snaps to grid axes and other tokens
 - Font size (pt), family, weight, color, opacity
 - Background opacity per element
 - Custom template builder using metadata tokens
 - Token search and favorites panel
 - Cinematic blanking preview
 - Safe guides preview
+- Open Gate Crop settings: native format preset, custom resolution, safety area %
 - Direct JSON save
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
@@ -310,11 +313,12 @@ Mask opacity is respected during export.
 
 1. Grab still
 2. Export to disk
-3. Load with Pillow
-4. Apply blanking mask
-5. Render burn-ins from JSON
-6. Save final image
-7. Optional compression (not working)
+3. Open Gate Crop → upscale to 1920×1080 (if enabled)
+4. Fit to FHD canvas (if enabled, and OGC inactive)
+5. Apply blanking mask + render burn-ins from JSON
+6. Resize by percentage (if enabled; skipped when Fit HD active)
+7. Save final image
+8. Optional ImageOptim compression (macOS)
 
 ---
 
@@ -340,7 +344,33 @@ Mask opacity is respected during export.
 - Resize exported stills
 - Restrict grab between In/Out
 - Marker-based EDL export
-- Optional ImageOptim compression
+- Optional ImageOptim compression (JPEG + PNG)
+- Open Gate Crop with safety area and native format presets (Arri, Sony Venice)
+- Open destination folder in Finder after export
+
+---
+
+## Open Gate Crop
+
+Designed for cameras that shoot in an open-gate (native sensor) format wider than the delivery ratio. When enabled, the plugin extracts the 16:9 delivery area from the exported still and upscales it to 1920×1080 before applying burn-ins.
+
+Two cases are handled automatically:
+- **Timeline export (pillarboxed)**: the 3:2 (or wider) content is centered in a 16:9 frame — the plugin detects the content width, crops the 16:9 centre, and upscales
+- **Full sensor export**: the native ratio is wider than 16:9 — the plugin crops the 16:9 centre vertically and upscales
+
+**Supported presets:**
+
+| Preset | Native resolution |
+|---|---|
+| Arri Alexa35 4.6K OG | 4608 × 3164 |
+| Arri AlexaLF 4.5K OG | 4448 × 3096 |
+| Sony Venice 1 6K 3:2 | 6048 × 4032 |
+| Sony Venice 2 8.6K 3:2 | 8640 × 5760 |
+| Custom | user-defined |
+
+**Safety Area**: additional symmetric inset applied before upscale (e.g. 95% crops 2.5% on each side).
+
+Burn-in text size is always computed at 1920px reference width — resize percentage scales the final image proportionally.
 
 ---
 
