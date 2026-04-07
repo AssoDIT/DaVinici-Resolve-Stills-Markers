@@ -160,7 +160,12 @@ class SMPTE(object):
 
 
 def detect_system_and_image_optim_installed(app_name="ImageOptim"):
-    return (sys.platform == "darwin") and os.path.exists(f"/Applications/{app_name}.app")
+    found = (sys.platform == "darwin") and os.path.exists(f"/Applications/{app_name}.app")
+    return found
+
+
+_imageoptim_status = detect_system_and_image_optim_installed()
+print(f"ImageOptim {'found ✓' if _imageoptim_status else 'not found — compress will be disabled'}")
 
 
 def load_settings_from_json(
@@ -216,25 +221,26 @@ def save_settings_to_json(
 
 # --------------------------------------------------------------------------
 # Helper: Delete metadata JSON file
-def delete_metadata_json(output_path, timeline_name):
+def delete_metadata_json(output_path, timeline_name, export_to=None):
     """
-    Remove the metadata JSON file generated during export.
+    Remove the metadata JSON files generated during export.
     Safe: does nothing if file does not exist.
     """
-    try:
-        if not output_path:
-            return
+    safe_name = timeline_name.replace(" ", "_")
 
-        json_path = os.path.join(
-            output_path,
-            f"{timeline_name}_stills_metadata.json".replace(" ", "_")
-        )
-
-        if os.path.exists(json_path):
-            os.remove(json_path)
-            print(f"Metadata JSON removed: {json_path}")
-    except Exception as e:
-        print(f"Could not remove metadata JSON: {e}")
+    for base, suffix in [
+        (output_path, "_stills_metadata.json"),
+        (export_to or output_path, "_stills_full_metadata.json"),
+    ]:
+        try:
+            if not base:
+                continue
+            json_path = os.path.join(base, f"{safe_name}{suffix}")
+            if os.path.exists(json_path):
+                os.remove(json_path)
+                print(f"Metadata JSON removed: {json_path}")
+        except Exception as e:
+            print(f"Could not remove metadata JSON: {e}")
 
 
 # --------------------------------------------------------------------------
@@ -1791,7 +1797,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                             {
                                                 "Weight": 0,
                                                 "ID": compress_check_boxID,
-                                                "Text": "Compress JPEG with ImageOptim",
+                                                "Text": "Compress with ImageOptim",
                                                 "Checked": settings.get("compress", False),
                                                 "Events": {"Toggled": True},
                                             }
@@ -1870,8 +1876,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[burnin_check_boxID].Enabled = export_on
         window_items[fit_canvas_check_boxID].Enabled = export_on
 
-        # Compress : uniquement si export fichier + jpg + ImageOptim installé
-        compress_enabled = export_on and (settings["format"] == "jpg") and detect_system_and_image_optim_installed()
+        # Compress : uniquement si export fichier + jpg/png + ImageOptim installé
+        compress_enabled = export_on and (settings["format"] in ("jpg", "png")) and detect_system_and_image_optim_installed()
         window_items[compress_check_boxID].Enabled = compress_enabled
 
         rename_on = window_items[rename_with_meta_check_boxID].Checked
@@ -2155,6 +2161,7 @@ if grab_stills:
            and (settings["markers"] == "Any" or settings["markers"] == markers_src.get(mf)["color"])
     ])
     processed_count = 0
+    all_exported_files = []
 
 
     # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
@@ -2278,6 +2285,7 @@ if grab_stills:
 
                     # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)
+                    all_exported_files.append(img_path)
 
 # --- WRITE FULL METADATA JSON (post-grab, complete data) ---
 try:
@@ -2289,6 +2297,17 @@ try:
         json.dump(metadata_json, jf, indent=4)
 except Exception as e:
     print(f"Could not write metadata JSON: {e}")
+
+# --- IMAGEOPTIM COMPRESSION ---
+if settings.get("compress", False) and settings.get("export", False) and all_exported_files:
+    if detect_system_and_image_optim_installed():
+        try:
+            subprocess.Popen(
+                ["/Applications/ImageOptim.app/Contents/MacOS/ImageOptim"] + all_exported_files
+            )
+            print(f"ImageOptim launched on {len(all_exported_files)} file(s).")
+        except Exception as e:
+            print(f"Could not launch ImageOptim: {e}")
 
 # --- FINAL DRX CLEANUP (post-export, reliable) ---
 if settings.get("remove_drx", False) and settings.get("export", False):
@@ -2302,7 +2321,7 @@ if settings.get("remove_drx", False) and settings.get("export", False):
                         print(f"Could not remove DRX {fn}: {e}")
 # --- OPTIONAL CLEANUP: remove metadata JSON after processing ---
 if settings.get("export", False):
-    delete_metadata_json(output_path, timeline.GetName())
+    delete_metadata_json(output_path, timeline.GetName(), export_to=settings.get("export_to"))
 
 
 restore_page(initial_state)
