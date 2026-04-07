@@ -861,6 +861,10 @@ def sanitize_payload(data: dict) -> dict:
         "safety":   max(50.0, min(100.0, _safe_float(ogc_in.get("safety", 100.0), 100.0))),
     }
 
+    # ---- still naming ----
+    raw_naming = data.get("still_naming", "")
+    out["still_naming"] = str(raw_naming).strip() if isinstance(raw_naming, str) else ""
+
     # ---- elements ----
     elements_in  = data.get("elements", [])
     elements_out = []

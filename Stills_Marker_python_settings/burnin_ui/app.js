@@ -70,7 +70,8 @@ let state = {
   open_gate_crop_custom_w: 3,
   open_gate_crop_custom_h: 2,
   open_gate_safety: 100,
-  ogc_show_frameline: true,
+  ogc_show_frameline: false,
+  still_naming_template: "",
 };
 
 // --- Undo / Redo Stacks ---
@@ -913,6 +914,45 @@ function bindInputs(){
     });
   }
 
+  // --- Still Naming ---
+  const stillNamingInput = document.getElementById("stillNamingTemplate");
+  if(stillNamingInput){
+    stillNamingInput.addEventListener("input", (e)=>{
+      state.still_naming_template = e.target.value;
+      scheduleSave();
+    });
+
+    // Build token chips
+    const NAMING_TOKENS = [
+      "%Scene","%Shot","%Take","%Camera_#",
+      "%Clipname","%Timeline","%Reel_Name",
+      "%Date","%FPS","%Resolution","%Source_TC",
+      "%Frame","%Clip_#",
+    ];
+    const chipsWrap = document.getElementById("stillNamingTokens");
+    if(chipsWrap){
+      NAMING_TOKENS.forEach(tok => {
+        const chip = document.createElement("span");
+        chip.textContent = tok;
+        chip.title = "Insert token";
+        chip.style.cssText = "padding:2px 7px;border-radius:3px;border:1px solid #363636;background:#1f2126;color:#d6d9df;font-size:11px;cursor:pointer;";
+        chip.addEventListener("mouseenter", ()=>{ chip.style.borderColor="#006D78"; chip.style.color="#fff"; });
+        chip.addEventListener("mouseleave", ()=>{ chip.style.borderColor="#363636"; chip.style.color="#d6d9df"; });
+        chip.addEventListener("click", ()=>{
+          const start = stillNamingInput.selectionStart;
+          const end   = stillNamingInput.selectionEnd;
+          const val   = stillNamingInput.value;
+          stillNamingInput.value = val.slice(0, start) + tok + val.slice(end);
+          stillNamingInput.setSelectionRange(start + tok.length, start + tok.length);
+          stillNamingInput.focus();
+          state.still_naming_template = stillNamingInput.value;
+          scheduleSave();
+        });
+        chipsWrap.appendChild(chip);
+      });
+    }
+  }
+
   // Editing selected element position
   els.metaPosX.addEventListener("input", ()=>{
     if(state.selectedIndex == null) return;
@@ -1701,7 +1741,7 @@ function render(){
   ctx.globalAlpha = 1.0;
 
   // --- OGC frameline ---
-  if(state.ogc_show_frameline !== false) {
+  if(state.ogc_show_frameline === true) {
     const nativeRatio   = getOGCNativeRatio();
     const deliveryRatio = 16 / 9;
     const safetyF       = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
@@ -1876,6 +1916,15 @@ async function loadFromServer(){
     if(ogcSafeEl) ogcSafeEl.value = state.open_gate_safety ?? 100;
     updateOpenGateCropUI();
 
+    // Still Naming
+    if(typeof data.still_naming === "string") state.still_naming_template = data.still_naming;
+    const stillNamingEl = document.getElementById("stillNamingTemplate");
+    if(stillNamingEl) stillNamingEl.value = state.still_naming_template || "";
+
+    // Sync frameline toggle from DOM (browser may restore unchecked state across reloads)
+    const _framelineEl = document.getElementById("ogcFramelineToggle");
+    if(_framelineEl) state.ogc_show_frameline = _framelineEl.checked;
+
     updateCanvasRatio();
 
     // Try to fetch metadata JSON for preview
@@ -1993,6 +2042,8 @@ async function saveToServer(){
         custom_h: Number(state.open_gate_crop_custom_h) || 2,
         safety: Number(state.open_gate_safety) ?? 100,
       },
+
+      still_naming: state.still_naming_template || "",
     };
 
     const res = await fetch(`${API_BASE}/save`,{

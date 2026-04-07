@@ -464,6 +464,62 @@ _OPEN_GATE_PRESETS = {
 }
 
 
+def apply_naming_template(template, meta_block):
+    """
+    Resolve a naming template string using metadata tokens and return a
+    sanitized filename stem (no extension, no path).
+
+    Supported tokens (case-sensitive, % prefix):
+      %Scene  %Shot  %Take  %Camera_#  %Clipname  %Timeline
+      %Reel_Name  %Date  %FPS  %Resolution  %Source_TC
+    """
+    if not template:
+        return ""
+
+    full_meta  = meta_block.get("metadata", {}) or {}
+    full_props = meta_block.get("clip_properties", {}) or {}
+
+    def _m(*keys):
+        for k in keys:
+            v = full_meta.get(k) or full_props.get(k) or ""
+            if v:
+                return str(v).strip()
+        return ""
+
+    token_map = {
+        "%Camera_#":    _m("Camera #", "Camera"),
+        "%Reel_Name":   _m("Reel Name"),
+        "%Source_TC":   meta_block.get("source_tc") or _m("Start TC") or "",
+        "%Resolution":  _m("Resolution"),
+        "%Timeline":    meta_block.get("timeline_name", ""),
+        "%Clipname":    meta_block.get("clip_name", ""),
+        "%Scene":       _m("Scene"),
+        "%Shot":        _m("Shot"),
+        "%Take":        _m("Take"),
+        "%Date":        _m("Date Recorded", "Date"),
+        "%FPS":         _m("FPS"),
+        "%Frame":       str(meta_block.get("timeline_frame", "")),
+        "%Clip_#":      _m("Clip #"),
+    }
+
+    result = template
+    # Replace longest tokens first to avoid partial substitution
+    for token in sorted(token_map, key=len, reverse=True):
+        result = result.replace(token, token_map[token])
+
+    # Sanitize: remove characters illegal in filenames
+    illegal = r'\/:*?"<>|'
+    for ch in illegal:
+        result = result.replace(ch, "_")
+
+    # Collapse multiple underscores, strip leading/trailing separators
+    while "__" in result:
+        result = result.replace("__", "_")
+    result = result.strip("_- ")
+
+    return result
+
+
 def apply_open_gate_crop(img_path, native_w, native_h, safety=100.0):
     """
     Extract the 16:9 delivery area from an open-gate still and upscale to 1920x1080.
@@ -2273,9 +2329,10 @@ if grab_stills:
     processed_count = 0
     all_exported_files = []
 
-    # Pre-load burnin settings once for Open Gate Crop (applied per image)
-    _burnin_cfg = load_burnin_web_settings() if settings.get("export", False) else {}
+    # Pre-load burnin settings once (OGC + still naming — always loaded)
+    _burnin_cfg = load_burnin_web_settings()
     _ogc = _burnin_cfg.get("open_gate_crop", {})
+    _still_naming = str(_burnin_cfg.get("still_naming", "")).strip()
     _ogc_enabled = bool(settings.get("open_gate_crop", False))
     if _ogc_enabled:
         _ogc_preset = _ogc.get("preset", "arri_alexa35")
@@ -2335,36 +2392,33 @@ if grab_stills:
         if settings.get("rename_with_meta", False):
             meta_block = metadata_by_frame.get(str(marker_offset_frame), {})
 
-            full_meta = meta_block.get("metadata", {})
-            full_props = meta_block.get("clip_properties", {})
+            if _still_naming:
+                # Use the web UI template (same as disk rename)
+                new_label = apply_naming_template(_still_naming, meta_block)
+            else:
+                # Fallback: hardcoded Scene_Shot_Take_Camera_Clipname
+                full_meta  = meta_block.get("metadata", {})
+                full_props = meta_block.get("clip_properties", {})
 
-            scene = full_meta.get("Scene") or full_meta.get("Scene Number") or full_props.get("Scene") or ""
-            shot = full_meta.get("Shot") or full_meta.get("Shot Number") or full_props.get("Shot") or ""
-            take = full_meta.get("Take") or full_meta.get("Take Number") or full_props.get("Take") or ""
-            camera = full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get(
-                "Camera Number") or full_props.get("Camera") or ""
-            clipname = meta_block.get("clip_name", "")
+                scene    = str(full_meta.get("Scene") or full_meta.get("Scene Number") or full_props.get("Scene") or "").strip()
+                shot     = str(full_meta.get("Shot") or full_meta.get("Shot Number") or full_props.get("Shot") or "").strip()
+                take     = str(full_meta.get("Take") or full_meta.get("Take Number") or full_props.get("Take") or "").strip()
+                camera   = str(full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get("Camera Number") or full_props.get("Camera") or "").strip()
+                clipname = str(meta_block.get("clip_name", "")).strip()
 
-            scene = str(scene).strip()
-            shot = str(shot).strip()
-            take = str(take).strip()
-            camera = str(camera).strip()
-            clipname = str(clipname).strip()
-
-            parts = []
-            if scene:
-                base = scene
-                if shot:
-                    base += f"_{shot}"
-                if take:
-                    base += f"_{take}"
-                parts.append(base)
-            if camera:
-                parts.append(camera)
-            if clipname:
-                parts.append(clipname)
-
-            new_label = "_".join(parts).strip("_")
+                parts = []
+                if scene:
+                    base = scene
+                    if shot:
+                        base += f"_{shot}"
+                    if take:
+                        base += f"_{take}"
+                    parts.append(base)
+                if camera:
+                    parts.append(camera)
+                if clipname:
+                    parts.append(clipname)
+                new_label = "_".join(parts).strip("_")
 
             if new_label:
                 still_album.SetLabel(grabbed, new_label)
@@ -2418,6 +2472,29 @@ if grab_stills:
                     # Skipped when fit HD is active (fixed 1920x1080 output)
                     if _resize_on and not settings.get("fit_to_1920_canvas", False):
                         resize_image(img_path, _resize_pct, delete_original=True)
+
+                    # Still naming template rename (applied last, after all processing)
+                    if _still_naming:
+                        new_stem = apply_naming_template(_still_naming, meta_block)
+                        if new_stem:
+                            ext = os.path.splitext(img_path)[1]
+                            new_path = os.path.join(os.path.dirname(img_path), new_stem + ext)
+                            # Avoid collision: append counter if name already exists
+                            if new_path != img_path and os.path.exists(new_path):
+                                base_stem = new_stem
+                                counter = 1
+                                while os.path.exists(new_path):
+                                    new_path = os.path.join(
+                                        os.path.dirname(img_path),
+                                        f"{base_stem}_{counter}{ext}"
+                                    )
+                                    counter += 1
+                            try:
+                                os.rename(img_path, new_path)
+                                img_path = new_path
+                                print(f"Still renamed → {os.path.basename(img_path)}")
+                            except Exception as e:
+                                print(f"Could not rename still: {e}")
 
                     # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)

@@ -106,11 +106,21 @@
               <input type="number" id="openGateSafety" min="50" max="100" value="100" step="0.5" style="width:65px" />
               <span style="font-size:12px;color:#999">%</span>
               <label style="display:flex;align-items:center;gap:4px;color:#666;font-size:11px;cursor:pointer;margin-left:4px;">
-                <input type="checkbox" id="ogcFramelineToggle" checked style="width:12px;height:12px;" />
+                <input type="checkbox" id="ogcFramelineToggle" style="width:12px;height:12px;" />
                 frameline
               </label>
             </div>
           </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <label style="font-size:11px;color:#8b9099;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;">Still Naming</label>
+            <input type="text" id="stillNamingTemplate" placeholder="e.g. %Scene_%Shot-%Take_%Camera_#" style="flex:1;min-width:0;" />
+          </div>
+          <div id="stillNamingTokens" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
         </div>
 
       </section>
