@@ -47,7 +47,11 @@ let state = {
   image_ratio: 1.77,
   image_ratio_mode: "crop", // "crop" | "fit"
   mask_style: "bars",       // "bars" | "lines" | "bars_lines"
-  mask_opacity: 1.0
+  mask_opacity: 1.0,
+  open_gate_crop_preset: "arri_alexa35",
+  open_gate_crop_custom_w: 3,
+  open_gate_crop_custom_h: 2,
+  open_gate_safety: 100,
 };
 
 // --- Undo / Redo Stacks ---
@@ -493,7 +497,7 @@ function buildTextFromParts(previewMetadata, templateObj){
 let bgImage = null;
 let saveTimer = null;
 
-let drag = { active:false, index:null, offsetX:0, offsetY:0, snapAxisX:null, snapAxisY:null };
+let drag = { active:false, index:null, offsetX:0, offsetY:0, snapAxisX:null, snapAxisY:null, snapTypeX:null, snapTypeY:null };
 
 // Axes magnétiques fixes (relatif 0-1)
 const SNAP_AXES_X = [0, 0.05, 0.1, 0.333, 0.5, 0.667, 0.9, 0.95, 1.0];
@@ -848,6 +852,37 @@ function bindInputs(){
     });
   }
 
+  // --- Open Gate Crop ---
+  const openGateCropPreset = document.getElementById("openGateCropPreset");
+  if(openGateCropPreset){
+    openGateCropPreset.addEventListener("change", (e)=>{
+      state.open_gate_crop_preset = e.target.value;
+      updateOpenGateCropUI();
+      scheduleSave();
+    });
+  }
+  const openGateCropW = document.getElementById("openGateCropW");
+  if(openGateCropW){
+    openGateCropW.addEventListener("input", (e)=>{
+      state.open_gate_crop_custom_w = parseInt(e.target.value) || 3;
+      scheduleSave();
+    });
+  }
+  const openGateCropH = document.getElementById("openGateCropH");
+  if(openGateCropH){
+    openGateCropH.addEventListener("input", (e)=>{
+      state.open_gate_crop_custom_h = parseInt(e.target.value) || 2;
+      scheduleSave();
+    });
+  }
+  const openGateSafetyEl = document.getElementById("openGateSafety");
+  if(openGateSafetyEl){
+    openGateSafetyEl.addEventListener("input", (e)=>{
+      state.open_gate_safety = parseFloat(e.target.value) || 100;
+      scheduleSave();
+    });
+  }
+
   // Editing selected element position
   els.metaPosX.addEventListener("input", ()=>{
     if(state.selectedIndex == null) return;
@@ -1087,15 +1122,24 @@ function bindInputs(){
       const snapDisabled = ev.shiftKey;
 
       if (snapDisabled) {
-        drag.snapAxisX = null;
-        drag.snapAxisY = null;
+        drag.snapAxisX = null; drag.snapTypeX = null;
+        drag.snapAxisY = null; drag.snapTypeY = null;
         item.x = rawX;
         item.y = rawY;
       } else {
-        const snappedX = snapToAxis(rawX, SNAP_AXES_X, otherX, SNAP_THRESHOLD);
-        const snappedY = snapToAxis(rawY, SNAP_AXES_Y, otherY, SNAP_THRESHOLD);
+        // Token snapping takes priority over grid snapping
+        const tokenSnapX = snapToAxis(rawX, [], otherX, SNAP_THRESHOLD);
+        const gridSnapX  = snapToAxis(rawX, SNAP_AXES_X, [], SNAP_THRESHOLD);
+        const snappedX   = (tokenSnapX !== rawX) ? tokenSnapX : gridSnapX;
+
+        const tokenSnapY = snapToAxis(rawY, [], otherY, SNAP_THRESHOLD);
+        const gridSnapY  = snapToAxis(rawY, SNAP_AXES_Y, [], SNAP_THRESHOLD);
+        const snappedY   = (tokenSnapY !== rawY) ? tokenSnapY : gridSnapY;
+
         drag.snapAxisX = (snappedX !== rawX) ? snappedX : null;
+        drag.snapTypeX = drag.snapAxisX !== null ? ((tokenSnapX !== rawX) ? 'token' : 'grid') : null;
         drag.snapAxisY = (snappedY !== rawY) ? snappedY : null;
+        drag.snapTypeY = drag.snapAxisY !== null ? ((tokenSnapY !== rawY) ? 'token' : 'grid') : null;
         item.x = snappedX;
         item.y = snappedY;
       }
@@ -1132,8 +1176,8 @@ function bindInputs(){
     if(drag.active){
       drag.active = false;
       drag.index = null;
-      drag.snapAxisX = null;
-      drag.snapAxisY = null;
+      drag.snapAxisX = null; drag.snapTypeX = null;
+      drag.snapAxisY = null; drag.snapTypeY = null;
       els.canvas.style.cursor = "default";
       scheduleSave();
     }
@@ -1632,9 +1676,8 @@ function render(){
     ctx.globalAlpha = 0.35;
     ctx.setLineDash([6, 5]);
     ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(180, 180, 180, 0.85)";
-
     if (drag.snapAxisX !== null) {
+      ctx.strokeStyle = drag.snapTypeX === 'token' ? "rgba(0, 180, 255, 0.9)" : "rgba(180, 180, 180, 0.85)";
       const sx = drag.snapAxisX * W;
       ctx.beginPath();
       ctx.moveTo(sx, 0);
@@ -1642,6 +1685,7 @@ function render(){
       ctx.stroke();
     }
     if (drag.snapAxisY !== null) {
+      ctx.strokeStyle = drag.snapTypeY === 'token' ? "rgba(0, 180, 255, 0.9)" : "rgba(180, 180, 180, 0.85)";
       const sy = drag.snapAxisY * H;
       ctx.beginPath();
       ctx.moveTo(0, sy);
@@ -1747,6 +1791,24 @@ async function loadFromServer(){
     if(ratioModeSelect){
         ratioModeSelect.value = state.image_ratio_mode || "crop";
     }
+
+    // Open Gate Crop
+    if(data.open_gate_crop && typeof data.open_gate_crop === "object"){
+      const ogc = data.open_gate_crop;
+      if(typeof ogc.preset === "string") state.open_gate_crop_preset = ogc.preset;
+      if(typeof ogc.custom_w === "number") state.open_gate_crop_custom_w = ogc.custom_w;
+      if(typeof ogc.custom_h === "number") state.open_gate_crop_custom_h = ogc.custom_h;
+      if(typeof ogc.safety === "number") state.open_gate_safety = ogc.safety;
+    }
+    const ogcPresetEl = document.getElementById("openGateCropPreset");
+    if(ogcPresetEl) ogcPresetEl.value = state.open_gate_crop_preset || "arri_alexa35";
+    const ogcWEl = document.getElementById("openGateCropW");
+    if(ogcWEl) ogcWEl.value = state.open_gate_crop_custom_w || 3;
+    const ogcHEl = document.getElementById("openGateCropH");
+    if(ogcHEl) ogcHEl.value = state.open_gate_crop_custom_h || 2;
+    const ogcSafeEl = document.getElementById("openGateSafety");
+    if(ogcSafeEl) ogcSafeEl.value = state.open_gate_safety ?? 100;
+    updateOpenGateCropUI();
 
     updateCanvasRatio();
 
@@ -1857,7 +1919,14 @@ async function saveToServer(){
         mode: state.image_ratio_mode,
         mask_style: state.mask_style,
         mask_opacity: Number(state.mask_opacity ?? 1),
-      }
+      },
+
+      open_gate_crop: {
+        preset: state.open_gate_crop_preset || "arri_alexa35",
+        custom_w: Number(state.open_gate_crop_custom_w) || 3,
+        custom_h: Number(state.open_gate_crop_custom_h) || 2,
+        safety: Number(state.open_gate_safety) ?? 100,
+      },
     };
 
     const res = await fetch(`${API_BASE}/save`,{
@@ -1872,6 +1941,11 @@ async function saveToServer(){
   } catch {
     setStatus("Saving Error","bad");
   }
+}
+
+function updateOpenGateCropUI(){
+  const customWrap = document.getElementById("openGateCropCustomWrap");
+  if(customWrap) customWrap.style.display = state.open_gate_crop_preset === "custom" ? "flex" : "none";
 }
 
 function clamp(v,a,b){

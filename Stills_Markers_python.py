@@ -456,6 +456,83 @@ def fit_image_into_black_canvas(input_path, canvas_width=1920, canvas_height=108
     return input_path
 
 
+_OPEN_GATE_PRESETS = {
+    "arri_alexa35": (4608, 3164),
+    "arri_alexalf":  (4448, 3096),
+    "sony_venice1":  (6048, 4032),
+    "sony_venice2":  (8640, 5760),
+}
+
+
+def apply_open_gate_crop(img_path, native_w, native_h, safety=100.0):
+    """
+    Extract the 16:9 delivery area from an open-gate still and upscale to 1920x1080.
+
+    Two cases depending on the actual exported image ratio:
+      - Image ~16:9 (timeline export): 3:2 content is pillarboxed (black left/right)
+        → find the native content width (H * native_ratio), then crop the 16:9 centre
+          of that content area (also removing top/bottom excess), upscale to 1920x1080.
+      - Image ~native ratio (full sensor export): 16:9 is letterboxed inside
+        → crop the 16:9 centre vertically, upscale to 1920x1080.
+    """
+    OUT_W, OUT_H = 1920, 1080
+
+    try:
+        delivery_ratio = 16.0 / 9.0
+        native_ratio   = float(native_w) / float(native_h)
+
+        with Image.open(img_path) as img:
+            W, H = img.size
+            src  = img.convert("RGB")
+
+        actual_ratio = float(W) / float(H)
+        print(f"Open gate crop: input {W}x{H} (ratio {actual_ratio:.3f}), "
+              f"native {native_w}x{native_h} (ratio {native_ratio:.3f})")
+
+        if actual_ratio >= (delivery_ratio - 0.05):
+            # Timeline export (~16:9): content is pillarboxed
+            # Step 1 – width of the native content inside the frame
+            content_w = int(round(H * native_ratio))
+            # Step 2 – 16:9 crop from within that content (crops top/bottom excess)
+            crop_w = content_w
+            crop_h = int(round(content_w / delivery_ratio))
+            mode_log = "pillarbox + 16:9 crop"
+        else:
+            # Full sensor export (~native ratio): extract 16:9 centre vertically
+            crop_w = W
+            crop_h = int(round(W / delivery_ratio))
+            mode_log = "16:9 centre crop"
+
+        crop_w = min(crop_w, W)
+        crop_h = min(crop_h, H)
+
+        # Apply safety area: tighten the crop symmetrically
+        safety_f = max(0.5, min(1.0, float(safety) / 100.0))
+        if safety_f < 1.0:
+            crop_w = int(round(crop_w * safety_f))
+            crop_h = int(round(crop_h * safety_f))
+
+        x = (W - crop_w) // 2
+        y = (H - crop_h) // 2
+
+        print(f"Open gate crop [{mode_log}]: box ({x},{y}) {crop_w}x{crop_h} safety={safety:.1f}% → upscale {OUT_W}x{OUT_H}")
+
+        cropped = src.crop((x, y, x + crop_w, y + crop_h))
+        resized = cropped.resize((OUT_W, OUT_H), Image.LANCZOS)
+
+        ext = os.path.splitext(img_path)[1].lower()
+        if ext in (".jpg", ".jpeg"):
+            resized.save(img_path, quality=95)
+        else:
+            resized.save(img_path)
+
+        print(f"Open gate crop applied: {os.path.basename(img_path)}")
+    except Exception as e:
+        print(f"Could not apply open gate crop: {e}")
+
+    return img_path
+
+
 def get_all_mediapool_bins(parent_bin):
     bins_list = [b for b in parent_bin.GetSubFolderList()]
     for sub_bin in list(bins_list):
@@ -567,13 +644,15 @@ dict_settings = {
     "create_export_folder_timeline_name": True,
     "create_sub_folder": True,
     "sub_folder_name": "Stills",
+    "open_gate_crop": False,
     "compress": False,
     "export_edl_markers": False,
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
     "rename_scene_shot_separator": "/",
     "burnin": False,
-    "fit_to_1920_canvas": False
+    "fit_to_1920_canvas": False,
+    "open_destination_folder": False
 }
 
 
@@ -1478,9 +1557,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     burnin_setting_boxID = "BurninSettings"
     burnin_check_boxID = "BurninCheckBox"
     fit_canvas_check_boxID = "FitCanvasCheckBox"
+    open_gate_crop_check_boxID = "OpenGateCropCheckBox"
 
     compress_setting_boxID = "CompressSettings"
     compress_check_boxID = "CompressCheckBox"
+    open_dest_check_boxID = "OpenDestCheckBox"
 
     cancel_buttonID = "CancelButton"
     start_buttonID = "StartButton"
@@ -1787,6 +1868,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
+                                                "ID": open_gate_crop_check_boxID,
+                                                "Text": "Open Gate Crop",
+                                                "Checked": settings.get("open_gate_crop", False),
+                                                "Events": {"Toggled": True},
+                                            }
+                                        ),
+                                        ui.CheckBox(
+                                            {
+                                                "Weight": 0,
                                                 "ID": burnin_check_boxID,
                                                 "Text": "Burnins",
                                                 "Checked": settings.get("burnin", False),
@@ -1799,6 +1889,21 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "ID": compress_check_boxID,
                                                 "Text": "Compress with ImageOptim",
                                                 "Checked": settings.get("compress", False),
+                                                "Events": {"Toggled": True},
+                                            }
+                                        ),
+                                        ui.HGap(0, 1),
+                                    ],
+                                ),
+                                ui.HGroup(
+                                    {"Weight": 0, "Spacing": 10},
+                                    [
+                                        ui.CheckBox(
+                                            {
+                                                "Weight": 0,
+                                                "ID": open_dest_check_boxID,
+                                                "Text": "Open destination folder",
+                                                "Checked": settings.get("open_destination_folder", False),
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
@@ -1872,9 +1977,10 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         window_items[remove_drx_check_boxID].Enabled = export_on
 
-        # Burnins and fixed output canvas are only useful when exporting files
+        # Burnins, open gate crop and fixed output canvas are only useful when exporting files
         window_items[burnin_check_boxID].Enabled = export_on
         window_items[fit_canvas_check_boxID].Enabled = export_on
+        window_items[open_gate_crop_check_boxID].Enabled = export_on
 
         # Compress : uniquement si export fichier + jpg/png + ImageOptim installé
         compress_enabled = export_on and (settings["format"] in ("jpg", "png")) and detect_system_and_image_optim_installed()
@@ -1971,6 +2077,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["compress"] = window_items[compress_check_boxID].Checked
         settings["burnin"] = window_items[burnin_check_boxID].Checked
         settings["fit_to_1920_canvas"] = window_items[fit_canvas_check_boxID].Checked
+        settings["open_gate_crop"] = window_items[open_gate_crop_check_boxID].Checked
+        settings["open_destination_folder"] = window_items[open_dest_check_boxID].Checked
 
         save_settings_to_json(settings)
         dispatcher.ExitLoop(True)
@@ -2010,6 +2118,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[compress_check_boxID].Toggled = OnGenericToggled
     main_window.On[burnin_check_boxID].Toggled = OnGenericToggled
     main_window.On[fit_canvas_check_boxID].Toggled = OnGenericToggled
+    main_window.On[open_gate_crop_check_boxID].Toggled = OnGenericToggled
+    main_window.On[open_dest_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[cancel_buttonID].Clicked = OnCancelButtonClicked
     main_window.On[start_buttonID].Clicked = OnStartButtonClicked
@@ -2163,6 +2273,19 @@ if grab_stills:
     processed_count = 0
     all_exported_files = []
 
+    # Pre-load burnin settings once for Open Gate Crop (applied per image)
+    _burnin_cfg = load_burnin_web_settings() if settings.get("export", False) else {}
+    _ogc = _burnin_cfg.get("open_gate_crop", {})
+    _ogc_enabled = bool(settings.get("open_gate_crop", False))
+    if _ogc_enabled:
+        _ogc_preset = _ogc.get("preset", "arri_alexa35")
+        if _ogc_preset == "custom":
+            _ogc_nw = int(_ogc.get("custom_w", 4608))
+            _ogc_nh = int(_ogc.get("custom_h", 3164))
+        else:
+            _ogc_nw, _ogc_nh = _OPEN_GATE_PRESETS.get(_ogc_preset, (4608, 3164))
+        _ogc_safety = float(_ogc.get("safety", 100.0))
+        print(f"Open Gate Crop enabled: {_ogc_preset} ({_ogc_nw}x{_ogc_nh}), safety={_ogc_safety}%")
 
     # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
     for marker_frame in marker_frames:
@@ -2270,10 +2393,18 @@ if grab_stills:
                     if "timeline_name" not in meta_block or not meta_block.get("timeline_name"):
                         meta_block["timeline_name"] = timeline.GetName()
 
-                    # Optional fixed black canvas normalization BEFORE burnin
-                    if settings.get("fit_to_1920_canvas", False):
+                    _resize_on  = settings.get("resize_stills", False)
+                    _resize_pct = int(settings.get("resize_percentage", 50))
+
+                    # OGC always upscales to 1920x1080 so burnins are applied at reference size
+                    if _ogc_enabled:
+                        apply_open_gate_crop(img_path, _ogc_nw, _ogc_nh, safety=_ogc_safety)
+
+                    # Fit HD canvas (skipped when OGC already produced 1920x1080)
+                    if settings.get("fit_to_1920_canvas", False) and not _ogc_enabled:
                         fit_image_into_black_canvas(img_path, 1920, 1080)
 
+                    # Burnins applied at current size (1920 for OGC/fitHD, native otherwise)
                     if settings.get("burnin", False):
                         burnin_web_settings = load_burnin_web_settings()
                         burnin_from_web_json(
@@ -2282,6 +2413,11 @@ if grab_stills:
                             burnin_cfg=burnin_web_settings,
                             out_path=img_path
                         )
+
+                    # Resize scales the final image (including burnins) proportionally
+                    # Skipped when fit HD is active (fixed 1920x1080 output)
+                    if _resize_on and not settings.get("fit_to_1920_canvas", False):
+                        resize_image(img_path, _resize_pct, delete_original=True)
 
                     # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)
@@ -2323,5 +2459,11 @@ if settings.get("remove_drx", False) and settings.get("export", False):
 if settings.get("export", False):
     delete_metadata_json(output_path, timeline.GetName(), export_to=settings.get("export_to"))
 
+# --- OPEN DESTINATION FOLDER IN FINDER ---
+if settings.get("open_destination_folder", False) and output_path and os.path.isdir(output_path):
+    try:
+        subprocess.Popen(["open", output_path])
+    except Exception as e:
+        print(f"Could not open destination folder: {e}")
 
 restore_page(initial_state)

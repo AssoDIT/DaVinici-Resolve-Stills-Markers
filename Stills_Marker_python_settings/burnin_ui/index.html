@@ -31,7 +31,6 @@
       <section class="panel middle">
         <h2>Preview</h2>
         <div class="row">
-          <span>Image</span>
           <input id="imgPicker" type="file" accept="image/*" />
         </div>
         <div class="previewWrap">
@@ -75,6 +74,38 @@
             <label>Opacity</label>
             <input id="maskOpacity" type="range" min="0" max="1" step="0.01" value="1" />
             <span id="maskOpacityVal" class="liveVal">1.00</span>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="row ratioControls" id="openGateCropRow">
+          <div class="inlineField">
+            <label>Native Format</label>
+            <select id="openGateCropPreset">
+              <option value="arri_alexa35">Arri Alexa35 4.6K OG</option>
+              <option value="arri_alexalf">Arri AlexaLF 4.5K OG</option>
+              <option value="sony_venice1">Sony Venice1 6K 3:2</option>
+              <option value="sony_venice2">Sony Venice2 8.6K 3:2</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div id="openGateCropCustomWrap" style="display:none;grid-column:2/4;align-items:flex-end;gap:12px;flex-direction:row;">
+            <div class="inlineField">
+              <label>Width</label>
+              <input type="number" id="openGateCropW" min="1" max="20000" value="3" style="width:80px" />
+            </div>
+            <div class="inlineField">
+              <label>Height</label>
+              <input type="number" id="openGateCropH" min="1" max="20000" value="2" style="width:80px" />
+            </div>
+          </div>
+          <div class="inlineField" style="grid-column:4;">
+            <label>Safety Area</label>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" id="openGateSafety" min="50" max="100" value="100" step="0.5" style="width:65px" />
+              <span style="font-size:12px;color:#999">%</span>
+            </div>
           </div>
         </div>
 

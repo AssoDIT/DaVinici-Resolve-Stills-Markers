@@ -848,6 +848,19 @@ def sanitize_payload(data: dict) -> dict:
         },
     }
 
+    # ---- open gate crop ----
+    _ogc_presets = {"arri_alexa35", "arri_alexalf", "sony_venice1", "sony_venice2", "custom"}
+    ogc_in      = data.get("open_gate_crop") if isinstance(data.get("open_gate_crop"), dict) else {}
+    ogc_preset  = str(ogc_in.get("preset", "arri_alexa35")).strip().lower()
+    if ogc_preset not in _ogc_presets:
+        ogc_preset = "arri_alexa35"
+    out["open_gate_crop"] = {
+        "preset":   ogc_preset,
+        "custom_w": max(1, min(20000, _safe_int(ogc_in.get("custom_w", 3), 3))),
+        "custom_h": max(1, min(20000, _safe_int(ogc_in.get("custom_h", 2), 2))),
+        "safety":   max(50.0, min(100.0, _safe_float(ogc_in.get("safety", 100.0), 100.0))),
+    }
+
     # ---- elements ----
     elements_in  = data.get("elements", [])
     elements_out = []

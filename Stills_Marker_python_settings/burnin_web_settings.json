@@ -13,6 +13,12 @@
       "opacity": 1.0
     }
   },
+  "open_gate_crop": {
+    "enabled": true,
+    "preset": "sony_venice2",
+    "custom_w": 4608,
+    "custom_h": 3164
+  },
   "elements": [
     {
       "id": "",
