@@ -2632,7 +2632,7 @@ if settings.get("compress", False) and settings.get("export", False) and all_exp
     if detect_system_and_image_optim_installed():
         try:
             subprocess.Popen(
-                ["/Applications/ImageOptim.app/Contents/MacOS/ImageOptim"] + all_exported_files
+                ["open", "-a", "ImageOptim"] + all_exported_files
             )
             print(f"ImageOptim launched on {len(all_exported_files)} file(s).")
         except Exception as e:
