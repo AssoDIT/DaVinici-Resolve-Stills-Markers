@@ -702,6 +702,7 @@ dict_settings = {
     "sub_folder_name": "Stills",
     "open_gate_crop": False,
     "compress": False,
+    "compress_mode": "none",
     "export_edl_markers": False,
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
@@ -1732,8 +1733,16 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     open_gate_crop_check_boxID = "OpenGateCropCheckBox"
 
     compress_setting_boxID = "CompressSettings"
-    compress_check_boxID = "CompressCheckBox"
+    compress_combo_boxID = "CompressComboBox"
     open_dest_check_boxID = "OpenDestCheckBox"
+
+    _COMPRESS_MODES = ["No compression", "ImageOptim (background)", "ImageOptim (app)"]
+    _COMPRESS_MODE_MAP = {
+        "No compression":        "none",
+        "ImageOptim (background)": "background",
+        "ImageOptim (app)":      "app",
+    }
+    _COMPRESS_MODE_MAP_INV = {v: k for k, v in _COMPRESS_MODE_MAP.items()}
 
     cancel_buttonID = "CancelButton"
     start_buttonID = "StartButton"
@@ -2055,13 +2064,12 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
-                                        ui.CheckBox(
+                                        ui.ComboBox(
                                             {
                                                 "Weight": 0,
-                                                "ID": compress_check_boxID,
-                                                "Text": "Compress with ImageOptim",
-                                                "Checked": settings.get("compress", False),
-                                                "Events": {"Toggled": True},
+                                                "ID": compress_combo_boxID,
+                                                "MinimumSize": [190, 0],
+                                                "Events": {"CurrentIndexChanged": True},
                                             }
                                         ),
                                         ui.HGap(0, 1),
@@ -2156,7 +2164,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         # Compress : uniquement si export fichier + jpg/png + ImageOptim installé
         compress_enabled = export_on and (settings["format"] in ("jpg", "png")) and detect_system_and_image_optim_installed()
-        window_items[compress_check_boxID].Enabled = compress_enabled
+        window_items[compress_combo_boxID].Enabled = compress_enabled
 
         rename_on = window_items[rename_with_meta_check_boxID].Checked
         window_items[rename_options_groupID].Enabled = rename_on
@@ -2191,6 +2199,14 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[rename_format_combo_boxID].AddItem("US")
         window_items[rename_format_combo_boxID].AddItem("EU")
         window_items[rename_format_combo_boxID].CurrentText = settings.get("rename_format_style", "EU")
+
+        # Compress ComboBox — rétrocompatibilité avec l'ancien setting "compress": bool
+        for label in _COMPRESS_MODES:
+            window_items[compress_combo_boxID].AddItem(label)
+        saved_mode = settings.get("compress_mode")
+        if saved_mode is None:
+            saved_mode = "app" if settings.get("compress", False) else "none"
+        window_items[compress_combo_boxID].CurrentText = _COMPRESS_MODE_MAP_INV.get(saved_mode, "No compression")
 
         update_controls()
 
@@ -2246,7 +2262,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["resize_percentage"] = window_items[resize_line_editID].Text
         settings["replace_original_exports"] = window_items[resize_replace_check_boxID].Checked
 
-        settings["compress"] = window_items[compress_check_boxID].Checked
+        settings["compress_mode"] = _COMPRESS_MODE_MAP.get(
+            window_items[compress_combo_boxID].CurrentText, "none"
+        )
         settings["burnin"] = window_items[burnin_check_boxID].Checked
         settings["fit_to_1920_canvas"] = window_items[fit_canvas_check_boxID].Checked
         settings["open_gate_crop"] = window_items[open_gate_crop_check_boxID].Checked
@@ -2287,7 +2305,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[resize_replace_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[format_combo_boxID].CurrentIndexChanged = OnFormatComboBoxCurrentIndexChanged
-    main_window.On[compress_check_boxID].Toggled = OnGenericToggled
+    main_window.On[compress_combo_boxID].CurrentIndexChanged = OnGenericToggled
     main_window.On[burnin_check_boxID].Toggled = OnGenericToggled
     main_window.On[fit_canvas_check_boxID].Toggled = OnGenericToggled
     main_window.On[open_gate_crop_check_boxID].Toggled = OnGenericToggled
@@ -2628,13 +2646,26 @@ except Exception as e:
     print(f"Could not write metadata JSON: {e}")
 
 # --- IMAGEOPTIM COMPRESSION ---
-if settings.get("compress", False) and settings.get("export", False) and all_exported_files:
+# --- IMAGEOPTIM COMPRESSION ---
+_compress_mode = settings.get("compress_mode")
+if _compress_mode is None:
+    _compress_mode = "app" if settings.get("compress", False) else "none"
+
+if _compress_mode != "none" and settings.get("export", False) and all_exported_files:
     if detect_system_and_image_optim_installed():
         try:
-            subprocess.Popen(
-                ["open", "-a", "ImageOptim"] + all_exported_files
-            )
-            print(f"ImageOptim launched on {len(all_exported_files)} file(s).")
+            if _compress_mode == "background":
+                # Traitement silencieux — ImageOptim ne passe pas au premier plan
+                subprocess.Popen(
+                    ["open", "-a", "ImageOptim", "--background"] + all_exported_files
+                )
+                print(f"ImageOptim launched in background on {len(all_exported_files)} file(s).")
+            else:
+                # Mode "app" — ImageOptim s'ouvre au premier plan
+                subprocess.Popen(
+                    ["open", "-a", "ImageOptim"] + all_exported_files
+                )
+                print(f"ImageOptim launched on {len(all_exported_files)} file(s).")
         except Exception as e:
             print(f"Could not launch ImageOptim: {e}")
 
