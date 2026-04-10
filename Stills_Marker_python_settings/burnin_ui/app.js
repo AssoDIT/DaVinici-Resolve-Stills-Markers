@@ -319,6 +319,8 @@ const metadataKeyMap = {
   ],
 
   "White_Balance": [
+    "metadata.White Point (Kelvin)",
+    "clip_properties.White Point (Kelvin)",
     "metadata.White Point",
     "clip_properties.White Point",
     "White_Balance"
@@ -343,6 +345,8 @@ const metadataKeyMap = {
   ],
 
   "Aperture": [
+    "metadata.Camera Aperture",
+    "clip_properties.Camera Aperture",
     "metadata.Cam Aperture",
     "clip_properties.Cam Aperture",
     "Aperture"

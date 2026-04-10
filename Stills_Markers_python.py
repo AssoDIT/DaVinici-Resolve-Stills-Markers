@@ -869,6 +869,106 @@ def burnin_3zones_top_white(
 
 
 # ---------------------------------------------------------------------------
+# Mapping from custom JSON token names to actual Resolve metadata field names.
+# Used by resolve_value() to resolve tokens that don't match metadata keys
+# directly (e.g. %Focal_Length → "Focal Point (mm)", %Aperture → "Cam Aperture").
+# Must be kept in sync with server_save_burnin_json.py CUSTOM_TO_RESOLVE.
+# ---------------------------------------------------------------------------
+_CUSTOM_TO_RESOLVE = {
+    # ── Production ────────────────────────────────────────────────────────────
+    "scene":                  "Scene",
+    "shot":                   "Shot",
+    "angle":                  "Angle",
+    "take":                   "Take",
+    "move":                   "Move",
+    "keywords":               "Keywords",
+    "good_take":              "Good Take",
+    "shoot_day":              "Shoot Day",
+    "date_recorded":          "Date Recorded",
+    "roll_card":              "Roll Card #",
+    "program_name":           "Program Name",
+    "episode_#":              "Episode #",
+    "episode_name":           "Episode Name",
+    "shot_during_ep":         "Shot During Ep",
+    "location":               "Location",
+    "unit_name":              "Unit Name",
+    "setup":                  "Setup",
+    "comments":               "Description",
+    "day_night":              "Day / Night",
+    "environment":            "Environment",
+    "shot_type":              "Shot Type",
+    "format":                 "Format",
+    "safe_area":              "Safe Area",
+    "timelapse_interval":     "Time-lapse Interval",
+    "people":                 "People",
+    "category":               "Category",
+    "subcategory":            "Subcategory",
+    # ── Camera ───────────────────────────────────────────────────────────────
+    "camera_#":               "Cam #",
+    "camera_type":            "Cam Type",
+    "camera_serial":          "Cam Serial #",
+    "camera_id":              "Cam ID",
+    "camera_notes":           "Cam Notes",
+    "camera_format":          "Cam Format",
+    "fps":                    "Cam FPS",
+    "tc_type":                "Cam TC Type",
+    "camera_firmware":        "Cam Firmware",
+    "camera_manufacturer":    "Camera Manufacturer",
+    "camera_position":        "Camera Position",
+    "camera_pan_angle":       "Camera Pan Angle",
+    "camera_tilt_angle":      "Camera Tilt Angle",
+    "camera_roll_angle":      "Camera Roll Angle",
+    "shutter_angle":          "Shutter Angle",
+    "shutter_speed":          "Shutter Speed",
+    "shutter_type":           "Shutter Type",
+    "iso":                    "ISO",
+    "white_balance":          "White Point (Kelvin)",
+    "white_balance_tint":     "White Balance Tint",
+    "sensor":                 "Sensor",
+    "sensor_area":            "Sensor Area Captured",
+    "media_type":             "Media Type",
+    "monitor_color_space":    "Mon Color Space",
+    "monitor_lut":            "Monitor LUT",
+    "lut_used":               "LUT Used",
+    "lut_used_on_set":        "LUT Used On Set",
+    "raw":                    "RAW",
+    "h_flip":                 "H-Flip",
+    "v_flip":                 "V-Flip",
+    # ── Lens ─────────────────────────────────────────────────────────────────
+    "lens_type":              "Lens Type",
+    "lens_#":                 "Lens #",
+    "lens_notes":             "Lens Notes",
+    "aperture":               "Camera Aperture",
+    "aperture_type":          "Camera Aperture Type",
+    "focal_length":           "Focal Point (mm)",
+    "distance":               "Distance",
+    "filter":                 "Filter",
+    "nd_filter":              "ND Filter",
+    "par_notes":              "PAR Notes",
+    "asp_ratio_notes":        "Asp Ratio Notes",
+    "gamma_notes":            "Gamma Notes",
+    "color_space_notes":      "Color Space Notes",
+    # ── Post / Color ─────────────────────────────────────────────────────────
+    "lut1":                   "LUT 1",
+    "lut2":                   "LUT 2",
+    "lut3":                   "LUT 3",
+    "lab_roll":               "Lab Roll #",
+    "colorist_notes":         "Colorist Notes",
+    "cdl_sop":                "CDL SOP",
+    "cdl_sat":                "CDL SAT",
+    "idt":                    "IDT",
+    "input_lut":              "Input LUT",
+    "input_color_space":      "Input Color Space",
+    "input_sizing_preset":    "Input Sizing Preset",
+    "input_sizing":           "Input Sizing",
+    "edit_sizing":            "Edit Sizing",
+    "slate_tc":               "Slate TC",
+    "render_resolution":      "Render Resolution",
+    "compression_ratio":      "Compression Ratio",
+    "codec_bitrate":          "Codec Bitrate",
+}
+
+# ---------------------------------------------------------------------------
 # Generic burnin driven entirely by burnin_web_settings.json
 # Each element defines:
 #   - key (metadata key)
@@ -1095,6 +1195,22 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
                 if (k_norm == target or k_norm.replace("_", "") == target_loose) and v is not None and str(
                         v).strip() != "":
                     return good_take_transform(k_norm, v)
+
+        # ---- 4) Alias via _CUSTOM_TO_RESOLVE (e.g. Focal_Length → "Focal Point (mm)") ----
+        resolve_name = _CUSTOM_TO_RESOLVE.get(target)
+        if resolve_name:
+            alias_target = normalize(resolve_name)
+            alias_loose = alias_target.replace("_", "")
+            if isinstance(full_meta, dict):
+                for k, v in full_meta.items():
+                    k_norm = normalize(k)
+                    if (k_norm == alias_target or k_norm.replace("_", "") == alias_loose) and v is not None and str(v).strip() != "":
+                        return good_take_transform(normalize(key_str), v)
+            if isinstance(full_props, dict):
+                for k, v in full_props.items():
+                    k_norm = normalize(k)
+                    if (k_norm == alias_target or k_norm.replace("_", "") == alias_loose) and v is not None and str(v).strip() != "":
+                        return good_take_transform(normalize(key_str), v)
 
         return ""
 
