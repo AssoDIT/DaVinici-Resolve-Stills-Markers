@@ -1699,6 +1699,78 @@ function render(){
   const tkRefW = fl ? fl.w : W;
   const tkRefH = fl ? fl.h : H;
 
+  ctx.globalAlpha = 1.0;
+
+  // --- Draw order when frameline active: bars → frameline border → tokens ---
+
+  // 1) Ratio bars/blanking INSIDE the frameline (clipped)
+  if(fl){
+    const {x: fx, y: fy, w: fw, h: fh} = fl;
+    const flRatio = fw / fh;
+    let bX = fx, bY = fy, bW = fw, bH = fh;
+    if(targetRatio > flRatio){
+      bH = fw / targetRatio;
+      bY = fy + (fh - bH) / 2;
+    } else if(targetRatio < flRatio){
+      bW = fh * targetRatio;
+      bX = fx + (fw - bW) / 2;
+    }
+
+    if(bX > fx || bY > fy){
+      const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fx, fy, fw, fh);
+      ctx.clip();
+      ctx.globalAlpha = maskAlpha;
+
+      if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+        ctx.fillStyle = "#000";
+        if(bY > fy){
+          ctx.fillRect(fx, fy, fw, bY - fy);
+          ctx.fillRect(fx, bY + bH, fw, (fy + fh) - (bY + bH));
+        }
+        if(bX > fx){
+          ctx.fillRect(fx, fy, bX - fx, fh);
+          ctx.fillRect(bX + bW, fy, (fx + fw) - (bX + bW), fh);
+        }
+      }
+
+      if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.strokeRect(bX, bY, bW, bH);
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // 2) Frameline border (orange dashed) — above bars, below tokens
+  if(fl){
+    const {x: fx, y: fy, w: fw, h: fh} = fl;
+    ctx.save();
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = "rgba(255, 165, 0, 0.85)";
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([8, 4]);
+    ctx.strokeRect(fx, fy, fw, fh);
+
+    const safetyPct = Math.round(state.open_gate_safety ?? 100);
+    const preset    = state.open_gate_crop_preset || "arri_alexa35";
+    const flLabel   = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
+    ctx.font        = "bold 11px Arial";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle   = "rgba(0,0,0,0.55)";
+    const lw        = ctx.measureText(flLabel).width;
+    ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
+    ctx.fillStyle   = "rgba(255,165,0,0.95)";
+    ctx.fillText(flLabel, fx + 8, fy + 19);
+    ctx.restore();
+  }
+
+  // 3) Tokens — on top of everything (clipped to frameline when active)
   if(fl){
     ctx.save();
     ctx.beginPath();
@@ -1769,74 +1841,6 @@ function render(){
   });
 
   if(fl) ctx.restore();
-
-  ctx.globalAlpha = 1.0;
-
-  // --- OGC frameline ---
-  if(fl){
-    const {x: fx, y: fy, w: fw, h: fh} = fl;
-
-    // 1) Orange dashed frameline border
-    ctx.save();
-    ctx.strokeStyle = "rgba(255, 165, 0, 0.85)";
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([8, 4]);
-    ctx.strokeRect(fx, fy, fw, fh);
-
-    // Corner label
-    const safetyPct = Math.round(state.open_gate_safety ?? 100);
-    const preset    = state.open_gate_crop_preset || "arri_alexa35";
-    const flLabel   = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
-    ctx.font        = "bold 11px Arial";
-    ctx.textBaseline = "bottom";
-    ctx.fillStyle   = "rgba(0,0,0,0.55)";
-    const lw        = ctx.measureText(flLabel).width;
-    ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
-    ctx.fillStyle   = "rgba(255,165,0,0.95)";
-    ctx.fillText(flLabel, fx + 8, fy + 19);
-    ctx.restore();
-
-    // 2) Ratio bars/lines drawn INSIDE the frameline (clipped)
-    const flRatio = fw / fh;
-    let bX = fx, bY = fy, bW = fw, bH = fh;
-    if(targetRatio > flRatio){
-      bH = fw / targetRatio;
-      bY = fy + (fh - bH) / 2;
-    } else if(targetRatio < flRatio){
-      bW = fh * targetRatio;
-      bX = fx + (fw - bW) / 2;
-    }
-
-    if(bX > fx || bY > fy){
-      const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(fx, fy, fw, fh);
-      ctx.clip();
-      ctx.globalAlpha = maskAlpha;
-
-      if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
-        ctx.fillStyle = "#000";
-        if(bY > fy){
-          ctx.fillRect(fx, fy, fw, bY - fy);
-          ctx.fillRect(fx, bY + bH, fw, (fy + fh) - (bY + bH));
-        }
-        if(bX > fx){
-          ctx.fillRect(fx, fy, bX - fx, fh);
-          ctx.fillRect(bX + bW, fy, (fx + fw) - (bX + bW), fh);
-        }
-      }
-
-      if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
-        ctx.strokeRect(bX, bY, bW, bH);
-      }
-
-      ctx.restore();
-    }
-  }
 
   // --- Lignes filigrane de snap (magnétisme) ---
   if (drag.active && (drag.snapAxisX !== null || drag.snapAxisY !== null)) {
