@@ -536,6 +536,7 @@ function snapToAxis(val, fixedAxes, dynamicAxes, threshold) {
   return val;
 }
 let lastBoxes = []; // [{index, x,y,w,h}]
+let activeFrameline = null; // OGC frameline rect {x,y,w,h} — set each render(), used by drag
 const loadedFontFamilies = new Set(["Arial"]);
 const systemFontFamilies = [
   "Arial","Helvetica","Times New Roman","Courier New","Verdana",
@@ -1189,8 +1190,10 @@ function bindInputs(){
       const otherX = state.elements.filter((_,i) => i !== drag.index).map(e => e.x);
       const otherY = state.elements.filter((_,i) => i !== drag.index).map(e => e.y);
 
-      const rawX = clamp(moveX / W, 0, 1);
-      const rawY = clamp(moveY / H, 0, 1);
+      // When frameline active, normalize position within the frameline rect
+      const _ref = activeFrameline || {x: 0, y: 0, w: W, h: H};
+      const rawX = clamp((moveX - _ref.x) / _ref.w, 0, 1);
+      const rawY = clamp((moveY - _ref.y) / _ref.h, 0, 1);
 
       // Shift désactive le magnétisme
       const snapDisabled = ev.shiftKey;
@@ -1545,6 +1548,18 @@ function render(){
   const canvasRatio = W / H;
   const targetRatio = state.image_ratio || 1.77;
 
+  // Pre-compute OGC frameline rect so bars and tokens can be drawn inside it when active
+  let fl = null;
+  if(state.ogc_show_frameline === true){
+    const _nr    = getOGCNativeRatio();
+    const _sf    = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+    const _cw    = H * _nr;
+    let   _fw    = Math.min(_cw * _sf, W);
+    let   _fh    = Math.min((_cw / (16/9)) * _sf, H);
+    fl = { x: (W - _fw) / 2, y: (H - _fh) / 2, w: _fw, h: _fh };
+  }
+  activeFrameline = fl; // expose to drag handlers
+
   if(state.image_ratio_mode === "fit"){
 
     // --- FIT MODE ---
@@ -1577,34 +1592,32 @@ function render(){
       cropX = (W - cropW) / 2;
     }
 
-    const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+    // When frameline is active, bars are drawn inside it — skip full-canvas bars
+    if(!fl){
+      const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = maskAlpha;
 
-    ctx.save();
-    ctx.globalAlpha = maskAlpha;
-
-    // --- Draw black bars only if style includes bars ---
-    if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
-      ctx.fillStyle = "#000";
-
-      if(cropY > 0){
-        ctx.fillRect(0, 0, W, cropY);
-        ctx.fillRect(0, cropY + cropH, W, H - (cropY + cropH));
+      if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+        ctx.fillStyle = "#000";
+        if(cropY > 0){
+          ctx.fillRect(0, 0, W, cropY);
+          ctx.fillRect(0, cropY + cropH, W, H - (cropY + cropH));
+        }
+        if(cropX > 0){
+          ctx.fillRect(0, 0, cropX, H);
+          ctx.fillRect(cropX + cropW, 0, W - (cropX + cropW), H);
+        }
       }
 
-      if(cropX > 0){
-        ctx.fillRect(0, 0, cropX, H);
-        ctx.fillRect(cropX + cropW, 0, W - (cropX + cropW), H);
+      if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cropX, cropY, cropW, cropH);
       }
-    }
 
-    // --- Draw white frame only if style includes lines ---
-    if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cropX, cropY, cropW, cropH);
+      ctx.restore();
     }
-
-    ctx.restore();
 
   } else {
 
@@ -1631,32 +1644,32 @@ function render(){
       ctx.fillRect(0,0,W,H);
     }
 
-    const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+    // When frameline is active, bars are drawn inside it — skip full-canvas bars
+    if(!fl){
+      const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = maskAlpha;
 
-    ctx.save();
-    ctx.globalAlpha = maskAlpha;
-
-    if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
-      ctx.fillStyle = "#000";
-
-      if(cropY > 0){
-        ctx.fillRect(0,0,W,cropY);
-        ctx.fillRect(0,cropY+cropH,W,H-(cropY+cropH));
+      if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+        ctx.fillStyle = "#000";
+        if(cropY > 0){
+          ctx.fillRect(0,0,W,cropY);
+          ctx.fillRect(0,cropY+cropH,W,H-(cropY+cropH));
+        }
+        if(cropX > 0){
+          ctx.fillRect(0,0,cropX,H);
+          ctx.fillRect(cropX+cropW,0,W-(cropX+cropW),H);
+        }
       }
 
-      if(cropX > 0){
-        ctx.fillRect(0,0,cropX,H);
-        ctx.fillRect(cropX+cropW,0,W-(cropX+cropW),H);
+      if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cropX,cropY,cropW,cropH);
       }
-    }
 
-    if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cropX,cropY,cropW,cropH);
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   // --- Display active ratio overlay ---
@@ -1680,6 +1693,19 @@ function render(){
   // For preview, take the first marker if available.
   const previewMetadata = window.previewMetadata || {};
 
+  // Token reference frame: frameline rect when active, full canvas otherwise
+  const tkRefX = fl ? fl.x : 0;
+  const tkRefY = fl ? fl.y : 0;
+  const tkRefW = fl ? fl.w : W;
+  const tkRefH = fl ? fl.h : H;
+
+  if(fl){
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(fl.x, fl.y, fl.w, fl.h);
+    ctx.clip();
+  }
+
   state.elements.forEach((item, index) => {
 
     // Reduce preview size on canvas (visual only, does not affect saved value)
@@ -1692,8 +1718,8 @@ function render(){
     const weight = fmt.font_weight || "normal";
     ctx.font = `${weight} ${fontSize}px ${family}`;
 
-    const x = item.x * W;
-    const y = item.y * H;
+    const x = tkRefX + item.x * tkRefW;
+    const y = tkRefY + item.y * tkRefH;
 
     let text = getItemText(previewMetadata, item);
     if(!text || text.trim() === ""){
@@ -1732,7 +1758,7 @@ function render(){
       ctx.strokeRect(drawX - 4, y - 4, textWidth + 8, fontSize * 1.2 + 8);
     }
 
-    // Save hitbox for dragging: approximate height as fontSize * 1.2
+    // Save hitbox for dragging (uses same reference frame as drawing)
     lastBoxes.push({
       index,
       x: drawX,
@@ -1742,42 +1768,74 @@ function render(){
     });
   });
 
+  if(fl) ctx.restore();
+
   ctx.globalAlpha = 1.0;
 
   // --- OGC frameline ---
-  if(state.ogc_show_frameline === true) {
-    const nativeRatio   = getOGCNativeRatio();
-    const deliveryRatio = 16 / 9;
-    const safetyF       = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+  if(fl){
+    const {x: fx, y: fy, w: fw, h: fh} = fl;
 
-    // Canvas is 16:9 — native content is pillarboxed inside it
-    const contentW = H * nativeRatio;          // native content width on canvas
-    let cropW = contentW * safetyF;
-    let cropH = (contentW / deliveryRatio) * safetyF;
-
-    cropW = Math.min(cropW, W);
-    cropH = Math.min(cropH, H);
-    const fx = (W - cropW) / 2;
-    const fy = (H - cropH) / 2;
-
+    // 1) Orange dashed frameline border
     ctx.save();
     ctx.strokeStyle = "rgba(255, 165, 0, 0.85)";
     ctx.lineWidth   = 1.5;
     ctx.setLineDash([8, 4]);
-    ctx.strokeRect(fx, fy, cropW, cropH);
+    ctx.strokeRect(fx, fy, fw, fh);
 
     // Corner label
     const safetyPct = Math.round(state.open_gate_safety ?? 100);
     const preset    = state.open_gate_crop_preset || "arri_alexa35";
-    const label     = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
+    const flLabel   = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
     ctx.font        = "bold 11px Arial";
     ctx.textBaseline = "bottom";
     ctx.fillStyle   = "rgba(0,0,0,0.55)";
-    const lw        = ctx.measureText(label).width;
+    const lw        = ctx.measureText(flLabel).width;
     ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
     ctx.fillStyle   = "rgba(255,165,0,0.95)";
-    ctx.fillText(label, fx + 8, fy + 19);
+    ctx.fillText(flLabel, fx + 8, fy + 19);
     ctx.restore();
+
+    // 2) Ratio bars/lines drawn INSIDE the frameline (clipped)
+    const flRatio = fw / fh;
+    let bX = fx, bY = fy, bW = fw, bH = fh;
+    if(targetRatio > flRatio){
+      bH = fw / targetRatio;
+      bY = fy + (fh - bH) / 2;
+    } else if(targetRatio < flRatio){
+      bW = fh * targetRatio;
+      bX = fx + (fw - bW) / 2;
+    }
+
+    if(bX > fx || bY > fy){
+      const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fx, fy, fw, fh);
+      ctx.clip();
+      ctx.globalAlpha = maskAlpha;
+
+      if(state.mask_style === "bars" || state.mask_style === "bars_lines"){
+        ctx.fillStyle = "#000";
+        if(bY > fy){
+          ctx.fillRect(fx, fy, fw, bY - fy);
+          ctx.fillRect(fx, bY + bH, fw, (fy + fh) - (bY + bH));
+        }
+        if(bX > fx){
+          ctx.fillRect(fx, fy, bX - fx, fh);
+          ctx.fillRect(bX + bW, fy, (fx + fw) - (bX + bW), fh);
+        }
+      }
+
+      if(state.mask_style === "lines" || state.mask_style === "bars_lines"){
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.strokeRect(bX, bY, bW, bH);
+      }
+
+      ctx.restore();
+    }
   }
 
   // --- Lignes filigrane de snap (magnétisme) ---

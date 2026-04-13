@@ -3,7 +3,7 @@
   "burnin_opacity": 0.5,
   "burnin_font_family": "Arial",
   "preview": {
-    "ratio": 2.39,
+    "ratio": 2.4,
     "mode": "crop",
     "mask_style": "bars_lines",
     "mask_opacity": 0.5,
@@ -14,11 +14,12 @@
     }
   },
   "open_gate_crop": {
-    "enabled": true,
-    "preset": "sony_venice2",
+    "preset": "arri_alexa35",
     "custom_w": 4608,
-    "custom_h": 3164
+    "custom_h": 3164,
+    "safety": 100.0
   },
+  "still_naming": "",
   "elements": [
     {
       "id": "",

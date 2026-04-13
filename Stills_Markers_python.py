@@ -713,19 +713,15 @@ dict_settings = {
 }
 
 
-def export_markers_to_edl(timeline, markers_dict, edl_path):
-    def frames_to_tc(frame, fps):
-        fps = float(fps)
-        f = int(round(frame))
-        hh = int(f // int(fps * 3600))
-        f -= int(hh * fps * 3600)
-        mm = int(f // int(fps * 60))
-        f -= int(mm * fps * 60)
-        ss = int(f // int(fps))
-        ff = int(f - int(ss * fps))
-        return f"{hh:02d}:{mm:02d}:{ss:02d}:{ff:02d}"
-
+def export_markers_to_edl(timeline, markers_dict, edl_path, still_naming="", drop_frame=False, metadata_by_frame=None):
+    """
+    Export markers to an EDL file using Resolve's native marker format.
+    marker line  : |C:ResolveColor<Color> |M:<label> |D:<dur_frames>
+    comment lines: * FROM CLIP NAME, * SCENE/SHOT/TAKE/CAM, * NOTE
+    metadata_by_frame: dict keyed by str(abs_frame) pre-collected during grab
+    """
     fps = float(timeline.GetSetting("timelineFrameRate") or 24.0)
+    timeline_start = timeline.GetStartFrame()
     frames = sorted(markers_dict.keys(), key=lambda x: float(x))
 
     title = timeline.GetName() or "Timeline"
@@ -741,36 +737,83 @@ def export_markers_to_edl(timeline, markers_dict, edl_path):
     for fr in frames:
         m = markers_dict[fr] or {}
         color = (m.get("color") or "").strip()
-        name = (m.get("name") or "").strip()
-        note = (m.get("note") or "").strip()
+        name  = (m.get("name") or "").strip()
+        note  = (m.get("note") or "").strip()
         dur = m.get("duration") or 1
         try:
-            dur = float(dur)
-        except:
-            dur = 1.0
+            dur = int(float(dur))
+        except Exception:
+            dur = 1
 
-        timeline_start = timeline.GetStartFrame()
+        abs_frame = timeline_start + int(float(fr))
+        start_tc  = timecode_from_frame(abs_frame, fps, drop_frame)
+        end_tc    = timecode_from_frame(abs_frame + dur, fps, drop_frame)
 
-        start_tc = timecode_from_frame(
-            timeline_start + int(float(fr)),
-            fps,
-            False
-        )
+        # Use pre-collected metadata — no timeline navigation needed
+        meta_block  = (metadata_by_frame or {}).get(str(abs_frame), {}) or {}
+        full_meta   = meta_block.get("metadata", {}) or {}
+        full_props  = meta_block.get("clip_properties", {}) or {}
+        clipname_val = str(meta_block.get("clip_name", "")).strip()
+        scene  = str(full_meta.get("Scene") or full_meta.get("Scene Number") or full_props.get("Scene") or "").strip()
+        shot   = str(full_meta.get("Shot") or full_meta.get("Shot Number") or full_props.get("Shot") or "").strip()
+        take   = str(full_meta.get("Take") or full_meta.get("Take Number") or full_props.get("Take") or "").strip()
+        camera = str(full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get("Camera Number") or full_props.get("Camera") or "").strip()
 
-        end_tc = timecode_from_frame(
-            timeline_start + int(float(fr) + dur),
-            fps,
-            False
-        )
+        # Compute label from template, then fallback to Scene_Shot-Take/Camera
+        computed_label = ""
+        if still_naming:
+            try:
+                computed_label = apply_naming_template(still_naming, meta_block)
+            except Exception:
+                pass
+        if not computed_label:
+            # Fallback: Scene/Shot-Take Cam X  (cinema clapper notation)
+            parts = []
+            if scene:
+                base = scene
+                if shot:
+                    base += f"/{shot}"
+                if take:
+                    base += f"-{take}"
+                parts.append(base)
+            if camera:
+                parts.append(f"Cam {camera}")
+            computed_label = " ".join(parts).strip()
 
+        label = computed_label or name  # fall through to raw marker name if no metadata
+
+        # ── Edit decision line ──────────────────────────────────────────────
         lines.append(f"{idx:03d}  AX       V     C        00:00:00:00 00:00:00:01 {start_tc} {end_tc}")
+
+        # ── Metadata lines before the marker pipe-line (no * prefix) ────────
+        if clipname_val:
+            lines.append(f"{clipname_val}")
+
+        # meta_parts = []
+        # if scene:
+        #     meta_parts.append(f"SCENE: {scene}")
+        # if shot:
+        #     meta_parts.append(f"SHOT: {shot}")
+        # if take:
+        #     meta_parts.append(f"TAKE: {take}")
+        # if camera:
+        #     meta_parts.append(f"CAM: {camera}")
+        # if meta_parts:
+        #     lines.append(" - ".join(meta_parts))
+
+        # ── Resolve EDL marker line: [note] |C:ResolveColor<x> |M:<label> |D:<dur>
+        # note (raw DR marker note) sits before the first | — native DR format
+        note_one_line = " ".join(note.splitlines()).strip() if note else ""
+        marker_parts = []
+        if note_one_line:
+            marker_parts.append(note_one_line)
         if color:
-            lines.append(f"* COLOR: {color}")
-        if name:
-            lines.append(f"* NAME: {name}")
-        if note:
-            note_one_line = " ".join(note.splitlines()).strip()
-            lines.append(f"* NOTE: {note_one_line}")
+            marker_parts.append(f"|C:ResolveColor{color}")
+        if label:
+            marker_parts.append(f"|M:{label}")
+        marker_parts.append(f"|D:{dur}")
+        lines.append(" ".join(marker_parts))
+
         lines.append("")
         idx += 1
 
@@ -2422,26 +2465,27 @@ if markers:
         elif settings.get("export_edl_markers", False):
             output_path = settings["export_to"]
 
-        # EDL export (filtered by marker color)
+        # EDL export — prepare paths/filters now, actual write happens after grab loop
+        # so that metadata_by_frame is fully populated when export_markers_to_edl runs.
+        _edl_markers = None
+        _edl_path    = None
         if settings.get("export_edl_markers", False):
 
             selected_color = settings.get("markers", "Any")
 
             if selected_color == "Any":
-                edl_markers = markers_src
+                _edl_markers = markers_src
             else:
-                edl_markers = {
+                _edl_markers = {
                     fr: m for fr, m in markers_src.items()
                     if m and m.get("color") == selected_color
                 }
 
             edl_filename = f"{timeline.GetName()}_stillsMarkers.edl".replace(" ", "_")
-            edl_path = os.path.join(
+            _edl_path = os.path.join(
                 output_path if output_path else settings["export_to"],
                 edl_filename
             )
-
-            export_markers_to_edl(timeline, edl_markers, edl_path)
 
 if grab_stills:
     markers_src = markers if not settings.get("restrict_to_in_out", False) else markers_in_out
@@ -2633,6 +2677,17 @@ if grab_stills:
                     # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)
                     all_exported_files.append(img_path)
+
+# --- EDL EXPORT (post-grab, uses fully populated metadata_by_frame) ---
+if settings.get("export_edl_markers", False) and _edl_markers is not None and _edl_path:
+    export_markers_to_edl(
+        timeline,
+        _edl_markers,
+        _edl_path,
+        still_naming=_still_naming,
+        drop_frame=drop_frame,
+        metadata_by_frame=metadata_by_frame,
+    )
 
 # --- WRITE FULL METADATA JSON (post-grab, complete data) ---
 try:
