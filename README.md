@@ -8,7 +8,10 @@ Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration plugin
 
 - Grab stills from timeline markers
 - Export stills to disk
-- Rename stills using clip metadata
+- Rename stills and gallery labels using clip metadata (Scene/Shot-Take Cam format)
+- Automatically create or reuse a gallery album named after the current timeline
+- Move timeline markers onto their corresponding clip (Media Pool item markers)
+- Restrict all operations to the timeline In/Out range
 - Apply customizable burn-ins via JSON layout
 - Apply cinematic blanking (aspect ratio mask: bars, frame, or both)
 - Export marker-based EDL files
@@ -324,7 +327,10 @@ Mask opacity is respected during export.
 
 ## Core Features
 
-- Metadata-driven renaming
+- Metadata-driven renaming of stills, gallery labels, timeline markers, and clip markers
+- Gallery album auto-created (or reused) from the current timeline name
+- Move timeline markers to Media Pool clip markers
+- In/Out range protection: all operations restricted to the active timeline range
 - JSON-based burn-in layout
 - Custom template engine with mixed tokens and text
 - Automatic star for Good_Take
@@ -378,7 +384,9 @@ Burn-in text size is always computed at 1920px reference width — resize percen
 
 - Resolve does not allow GUI locking during script execution. Opening modal windows or automatic backups during execution may cause failures.
 - Resolve supports a maximum of 3 Custom Text slots per burn-in preset. Elements that do not map to a Resolve native type count toward this limit.
-- Send to Resolve : Resolve must be restarted or the project re-opened to pick up the change.
+- Send to Resolve: Resolve must be restarted or the project re-opened to pick up the change.
+- `DeleteMarkersByColor` deletes all markers of a given color. When In/Out protection is active and a color has both in-range and out-of-range markers, the entire color is skipped to avoid touching out-of-range markers.
+- Gallery still labels may not contain `/` (filesystem restriction). The plugin automatically replaces `/` with `-` in exported labels while keeping `/` in timeline and clip marker names.
 
 ---
 
