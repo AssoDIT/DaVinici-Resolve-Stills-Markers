@@ -2153,16 +2153,6 @@ async function exportResolveXml() {
   const nameInput = document.getElementById("exportPresetName");
   const name = (nameInput && nameInput.value.trim()) || "Adit Preset";
 
-  // Count elements that will occupy a Custom Text slot (128/129/130)
-  const customCount = state.elements.filter(el => !_autoFillKeys.has(el.key)).length;
-  if (customCount > 3) {
-    const ok = confirm(
-      `Warning: ${customCount} elements need a Custom Text slot, but Resolve only supports 3 (Custom Text1, Text2, Text3).\n\n` +
-      `Only the first 3 will be included in the exported XML. Continue?`
-    );
-    if (!ok) return;
-  }
-
   // Save current state first so the server reads the latest settings
   await saveToServer();
 
@@ -2192,14 +2182,6 @@ async function exportResolveXml() {
 async function sendToResolve() {
   const nameInput = document.getElementById("exportPresetName");
   const name = (nameInput && nameInput.value.trim()) || "My Preset";
-
-  const customCount = state.elements.filter(el => !_autoFillKeys.has(el.key)).length;
-  if (customCount > 3) {
-    const ok = confirm(
-      `Warning: ${customCount} elements need a Custom Text slot, but Resolve only supports 3.\n\nOnly the first 3 will be included. Continue?`
-    );
-    if (!ok) return;
-  }
 
   await saveToServer();
 

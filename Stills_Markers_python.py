@@ -704,6 +704,8 @@ dict_settings = {
     "compress": False,
     "compress_mode": "none",
     "export_edl_markers": False,
+    "rename_timeline_markers": False,
+    "move_markers_to_clips": False,
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
     "rename_scene_shot_separator": "/",
@@ -1511,7 +1513,7 @@ def show_alert(message):
 
     win = dispatcher.AddWindow(
         {"ID": win_id, "WindowTitle": "Stills Markers", "Dialog": True,
-         "MinimumSize": [380, 120]},
+         "MinimumSize": [420, 120]},
         ui.VGroup({"Spacing": 12, "Weight": 1}, [
             ui.Label({"Text": message, "Alignment": {"AlignHCenter": True,
                                                       "AlignVCenter": True}, "WordWrap": True,
@@ -1556,9 +1558,9 @@ def export_stills_and_get_new_files(still_album, stills_list, output_path, prefi
         if f.lower().endswith("." + ext.lower())
     )
 
-    ok = still_album.ExportStills(stills_list, output_path, prefix, resolve_fmt)
-    if not ok:
-        return False, []
+    # ExportStills may return None even on success (Resolve API quirk) — use file
+    # presence as the authoritative signal rather than the return value.
+    still_album.ExportStills(stills_list, output_path, prefix, resolve_fmt)
 
     after_files = set(
         f for f in os.listdir(output_path)
@@ -1567,15 +1569,15 @@ def export_stills_and_get_new_files(still_album, stills_list, output_path, prefi
 
     new_files = list(after_files - before_files)
 
-    # If no new filename detected, assume overwrite -> return latest modified file
+    # No new filename: assume overwrite (Resolve reuses the same filename) →
+    # return the most recently modified file in the folder.
     if not new_files:
-        files = [
-            os.path.join(output_path, f)
-            for f in after_files
-        ]
+        files = [os.path.join(output_path, f) for f in after_files]
         if not files:
-            return True, []
+            print(f"[export] No files found in {output_path} after ExportStills")
+            return False, []
         latest = max(files, key=os.path.getmtime)
+        print(f"[export] Overwrite detected → {os.path.basename(latest)}")
         return True, [latest]
 
     return True, [os.path.join(output_path, f) for f in new_files]
@@ -1749,6 +1751,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     export_to_line_editID = "ExportToLineEdit"
     browse_buttonID = "BrowseButton"
     export_edl_markers_check_boxID = "ExportEdlMarkersCheckBox"
+    rename_timeline_markers_check_boxID = "RenameTimelineMarkersCheckBox"
+    move_markers_to_clips_check_boxID = "MoveMarkersToClipsCheckBox"
 
     restrict_to_in_out_check_boxID = "RestrictToInOutCheckBox"
 
@@ -1819,7 +1823,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             "Events": {"Close": True, "KeyPress": True},
         },
         ui.VGroup(
-            {"MinimumSize": [600, 380], "MaximumSize": [600, 380], "Weight": 1},
+            {"MinimumSize": [600, 420], "MaximumSize": [600, 420], "Weight": 1},
             [
                 ui.HGroup({"Weight": 1, "Spacing": 0}, [
                     ui.HGap(14),
@@ -1960,15 +1964,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "ID": format_combo_boxID,
                                         "MinimumSize": [140, 0],
                                         "MaximumSize": [180, 16777215],
-                                    }
-                                ),
-                                ui.CheckBox(
-                                    {
-                                        "Weight": 0,
-                                        "ID": export_edl_markers_check_boxID,
-                                        "Text": "Export EDL markers",
-                                        "Checked": settings.get("export_edl_markers", False),
-                                        "Events": {"Toggled": True},
                                     }
                                 ),
                             ],
@@ -2135,6 +2130,39 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                 ),
                             ],
                         ),
+                        # ── Marker options ───────────────────────────────────────
+                        ui.HGroup(
+                            {"Weight": 0, "Spacing": 10},
+                            [
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": export_edl_markers_check_boxID,
+                                        "Text": "Export EDL markers",
+                                        "Checked": settings.get("export_edl_markers", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": rename_timeline_markers_check_boxID,
+                                        "Text": "Rename timeline markers",
+                                        "Checked": settings.get("rename_timeline_markers", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": move_markers_to_clips_check_boxID,
+                                        "Text": "Move markers to clips",
+                                        "Checked": settings.get("move_markers_to_clips", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                            ],
+                        ),
                         ui.VGap(2),
                         # ── Buttons ──────────────────────────────────────────────
                         ui.HGroup(
@@ -2288,6 +2316,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["export_to"] = window_items[export_to_line_editID].Text
         settings["format"] = stills["formats"]["sort_order"][window_items[format_combo_boxID].CurrentIndex]
         settings["export_edl_markers"] = window_items[export_edl_markers_check_boxID].Checked
+        settings["rename_timeline_markers"] = window_items[rename_timeline_markers_check_boxID].Checked
+        settings["move_markers_to_clips"] = window_items[move_markers_to_clips_check_boxID].Checked
 
         settings["restrict_to_in_out"] = window_items[restrict_to_in_out_check_boxID].Checked
 
@@ -2338,6 +2368,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[browse_buttonID].Clicked = OnBrowseButtonClicked
     main_window.On[export_to_line_editID].TextChanged = OnGenericToggled
 
+    main_window.On[rename_timeline_markers_check_boxID].Toggled = OnGenericToggled
+    main_window.On[move_markers_to_clips_check_boxID].Toggled = OnGenericToggled
     main_window.On[remove_drx_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_timeline_folder_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_sub_folder_check_boxID].Toggled = OnGenericToggled
@@ -2366,11 +2398,21 @@ project = resolve.GetProjectManager().GetCurrentProject()
 assert project, "Couldn't get current project"
 gallery = project.GetGallery()
 assert gallery, "Couldn't get the Resolve stills gallery"
-still_album = gallery.GetCurrentStillAlbum()
-assert still_album, "Couldn't get the current gallery still album"
-still_album_name = gallery.GetAlbumName(still_album)
 timeline = project.GetCurrentTimeline()
 assert timeline, "Couldn't get current timeline"
+
+# Look for an existing album named after the timeline.
+# Creation is deferred until the user actually clicks Start (avoid creating orphan albums).
+_tl_album_name = timeline.GetName()
+still_album = None
+for _candidate in (gallery.GetGalleryStillAlbums() or []):
+    if gallery.GetAlbumName(_candidate) == _tl_album_name:
+        still_album = _candidate
+        gallery.SetCurrentStillAlbum(still_album)
+        print(f"Gallery album found: '{_tl_album_name}'")
+        break
+# Use the timeline name for the UI label regardless of whether the album exists yet
+still_album_name = gallery.GetAlbumName(still_album) if still_album else _tl_album_name
 
 timeline_start = timeline.GetStartFrame()
 frame_rate = timeline.GetSetting("timelineFrameRate")
@@ -2420,6 +2462,18 @@ if markers:
     print("launching script main loop and grab_stills is ", grab_stills)
 
     if grab_stills:
+        # Create the album now if it didn't exist at startup
+        if still_album is None:
+            still_album = gallery.CreateGalleryStillAlbum()
+            if still_album:
+                gallery.SetAlbumName(still_album, _tl_album_name)
+                gallery.SetCurrentStillAlbum(still_album)
+                print(f"Gallery album created: '{_tl_album_name}'")
+            else:
+                still_album = gallery.GetCurrentStillAlbum()
+                print(f"CreateGalleryStillAlbum() returned None — using current album")
+        assert still_album, "Couldn't get or create a gallery still album"
+
         initial_state = change_page("color")
 
         # Build markers source after UI (because settings may have changed)
@@ -2487,6 +2541,10 @@ if markers:
                 edl_filename
             )
 
+# Always initialize so post-loop blocks don't NameError when grab_stills=False
+_pending_marker_renames = []
+_pending_clip_markers   = []
+
 if grab_stills:
     markers_src = markers if not settings.get("restrict_to_in_out", False) else markers_in_out
     marker_frames = sorted(markers_src.keys())
@@ -2506,6 +2564,8 @@ if grab_stills:
     ])
     processed_count = 0
     all_exported_files = []
+    _pending_marker_renames = []  # list of (marker_frame, color, new_name, note, duration, customData)
+    _pending_clip_markers   = []  # list of (mpi, src_frame, color, name, note, duration, customData, tl_frame)
 
     # Pre-load burnin settings once (OGC + still naming — always loaded)
     _burnin_cfg = load_burnin_web_settings()
@@ -2534,9 +2594,15 @@ if grab_stills:
         tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
 
         assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
+        # Re-select album before each grab — page changes can reset Resolve's
+        # active gallery album, causing GrabStill to deposit into the wrong album.
+        gallery.SetCurrentStillAlbum(still_album)
+        _stills_before = still_album.GetStills() or []
         grabbed = timeline.GrabStill()
         if not grabbed:
             raise Exception(f"Couldn't grab still at {tc}")
+        _stills_after = still_album.GetStills() or []
+        print(f"[grab_debug] album stills before={len(_stills_before)} after={len(_stills_after)} grabbed_in_album={grabbed in _stills_after}")
 
         # Collect metadata immediately after grab and write JSON incrementally
         meta_block = collect_full_metadata_at_playhead(
@@ -2582,24 +2648,116 @@ if grab_stills:
                 shot     = str(full_meta.get("Shot") or full_meta.get("Shot Number") or full_props.get("Shot") or "").strip()
                 take     = str(full_meta.get("Take") or full_meta.get("Take Number") or full_props.get("Take") or "").strip()
                 camera   = str(full_meta.get("Camera #") or full_meta.get("Camera") or full_meta.get("Camera Number") or full_props.get("Camera") or "").strip()
-                clipname = str(meta_block.get("clip_name", "")).strip()
+                clipname = os.path.splitext(str(meta_block.get("clip_name", "")).strip())[0]
 
+                # Same format as EDL export: "Scene/Shot-Take Cam X"
                 parts = []
                 if scene:
                     base = scene
                     if shot:
-                        base += f"_{shot}"
+                        base += f"/{shot}"
                     if take:
-                        base += f"_{take}"
+                        base += f"-{take}"
                     parts.append(base)
                 if camera:
-                    parts.append(camera)
-                if clipname:
+                    parts.append(f"Cam {camera}")
+                # Clip name as last-resort fallback when no editorial metadata exists
+                if not parts and clipname:
                     parts.append(clipname)
-                new_label = "_".join(parts).strip("_")
+                new_label = " ".join(parts).strip()
 
             if new_label:
-                still_album.SetLabel(grabbed, new_label)
+                # "/" is illegal in filenames — Resolve uses the label as the exported filename
+                still_label = new_label.replace("/", "-")
+                ok_label = still_album.SetLabel(grabbed, still_label)
+                print(f"Still label → {repr(still_label)}")
+
+        # Collect rename task — actual API calls happen after grab loop (requires Edit page)
+        if settings.get("rename_timeline_markers", False):
+            _rmb = metadata_by_frame.get(str(marker_offset_frame), {})
+            _rmfm = _rmb.get("metadata", {}) or {}
+            _rmfp = _rmb.get("clip_properties", {}) or {}
+            _rn = ""
+            if _still_naming:
+                try:
+                    _rn = apply_naming_template(_still_naming, _rmb)
+                except Exception:
+                    pass
+            if not _rn:
+                _sc = str(_rmfm.get("Scene") or _rmfm.get("Scene Number") or _rmfp.get("Scene") or "").strip()
+                _sh = str(_rmfm.get("Shot") or _rmfm.get("Shot Number") or _rmfp.get("Shot") or "").strip()
+                _tk = str(_rmfm.get("Take") or _rmfm.get("Take Number") or _rmfp.get("Take") or "").strip()
+                _cm = str(_rmfm.get("Camera #") or _rmfm.get("Camera") or _rmfm.get("Camera Number") or _rmfp.get("Camera") or "").strip()
+                _rparts = []
+                if _sc:
+                    _rbase = _sc
+                    if _sh: _rbase += f"/{_sh}"
+                    if _tk: _rbase += f"-{_tk}"
+                    _rparts.append(_rbase)
+                if _cm:
+                    _rparts.append(f"Cam {_cm}")
+                _rn = " ".join(_rparts).strip()
+            if not _rn:
+                _rn = os.path.splitext(str(_rmb.get("clip_name", "")).strip())[0]
+            if _rn:
+                _pending_marker_renames.append((
+                    int(marker_frame),
+                    marker.get("color", "Blue"),
+                    _rn,
+                    marker.get("note", ""),
+                    int(marker.get("duration", 1)),
+                    marker.get("customData", ""),
+                ))
+
+        # Collect clip marker task (executed post-loop on Edit page)
+        if settings.get("move_markers_to_clips", False):
+            _cm_item = timeline.GetCurrentVideoItem()
+            if _cm_item:
+                _cm_mpi = _cm_item.GetMediaPoolItem()
+                if _cm_mpi:
+                    _cm_tl_start  = _cm_item.GetStart() if hasattr(_cm_item, "GetStart") else 0
+                    # Frame key for TimelineItem.AddMarker: same reference as item.GetMarkers() keys
+                    # = marker_frame - (clip_start - timeline_start)  [no left-offset]
+                    _cm_src_frame = int(marker_frame - (_cm_tl_start - timeline_start))
+                    # Compute name: same logic as rename (template or fallback)
+                    _cm_rmb  = metadata_by_frame.get(str(marker_offset_frame), {})
+                    _cm_rmfm = _cm_rmb.get("metadata", {}) or {}
+                    _cm_rmfp = _cm_rmb.get("clip_properties", {}) or {}
+                    _cm_name = ""
+                    if _still_naming:
+                        try:
+                            _cm_name = apply_naming_template(_still_naming, _cm_rmb)
+                        except Exception:
+                            pass
+                    if not _cm_name:
+                        _cm_sc = str(_cm_rmfm.get("Scene") or _cm_rmfm.get("Scene Number") or _cm_rmfp.get("Scene") or "").strip()
+                        _cm_sh = str(_cm_rmfm.get("Shot") or _cm_rmfm.get("Shot Number") or _cm_rmfp.get("Shot") or "").strip()
+                        _cm_tk = str(_cm_rmfm.get("Take") or _cm_rmfm.get("Take Number") or _cm_rmfp.get("Take") or "").strip()
+                        _cm_cm = str(_cm_rmfm.get("Camera #") or _cm_rmfm.get("Camera") or _cm_rmfm.get("Camera Number") or _cm_rmfp.get("Camera") or "").strip()
+                        _cm_pts = []
+                        if _cm_sc:
+                            _cm_base = _cm_sc
+                            if _cm_sh: _cm_base += f"/{_cm_sh}"
+                            if _cm_tk: _cm_base += f"-{_cm_tk}"
+                            _cm_pts.append(_cm_base)
+                        if _cm_cm:
+                            _cm_pts.append(f"Cam {_cm_cm}")
+                        _cm_name = " ".join(_cm_pts).strip()
+                    if not _cm_name:
+                        _cm_name = os.path.splitext(str(_cm_rmb.get("clip_name", "")).strip())[0]
+                    if not _cm_name:
+                        _cm_name = marker.get("name", "")
+                    _pending_clip_markers.append((
+                        _cm_mpi,
+                        _cm_src_frame,
+                        marker.get("color", "Blue"),
+                        _cm_name,
+                        marker.get("note", ""),
+                        int(marker.get("duration", 1)),
+                        marker.get("customData", ""),
+                        int(marker_frame),
+                        _cm_item,          # TimelineItem for fallback AddMarker
+                    ))
 
         # -------------------------------------------------
         # SINGLE-PASS DISK EXPORT (no second traversal)
@@ -2607,6 +2765,8 @@ if grab_stills:
         if settings.get("export", False):
             prefix = ""
             reselect_album(still_album, gallery)
+            _album_stills_now = still_album.GetStills() or []
+            print(f"[export_debug] album has {len(_album_stills_now)} stills, grabbed in album={grabbed in _album_stills_now}")
             ok, new_files = export_stills_and_get_new_files(
                 still_album=still_album,
                 stills_list=[grabbed],
@@ -2615,10 +2775,9 @@ if grab_stills:
                 resolve_fmt=settings["format"],
                 ext=settings["format"],
             )
-
-
             if ok and new_files:
                 for img_path in new_files:
+                    print(f"Still exported → {os.path.basename(img_path)}")
                     meta_block = metadata_by_frame.get(str(marker_offset_frame), {}) or {}
 
                     # Ensure timeline_name is always available for burnin tokens
@@ -2677,6 +2836,108 @@ if grab_stills:
                     # Register filename in JSON
                     meta_block["exported_filename"] = os.path.basename(img_path)
                     all_exported_files.append(img_path)
+
+# Frames that were actually processed (respects restrict_to_in_out via markers_src)
+_processed_frames = set(markers_src.keys()) if grab_stills else set()
+
+# --- TIMELINE MARKER RENAMES (post-grab, requires Edit page) ---
+# DeleteMarkerAtFrameNum is unavailable in some Resolve versions.
+# Strategy: group renames by color → DeleteMarkersByColor → re-add all markers of that color.
+# When restrict_to_in_out is on and a color has out-of-range markers, we cannot delete+re-add
+# without touching them, so we skip that color entirely (leave all markers of that color as-is).
+if _pending_marker_renames:
+    change_page("edit")
+    _rename_map      = {_rmf: (_rmn, _rmno, _rmd, _rmx) for _rmf, _rmc, _rmn, _rmno, _rmd, _rmx in _pending_marker_renames}
+    _colors_to_redo  = {_rmc for _, _rmc, _, _, _, _ in _pending_marker_renames}
+    _current_markers = timeline.GetMarkers() or {}
+    _restrict        = settings.get("restrict_to_in_out", False)
+    for _color in _colors_to_redo:
+        _all_of_color_r = [fr for fr, info in _current_markers.items() if info.get("color") == _color]
+        _out_of_range_r = [fr for fr in _all_of_color_r if fr not in _processed_frames]
+        if _restrict and _out_of_range_r:
+            # Cannot rename without deleting out-of-range markers too → skip
+            print(f"[rename_markers] skipping color '{_color}' "
+                  f"({len(_out_of_range_r)} out-of-range marker(s) would be touched)")
+            continue
+        _to_readd = [(fr, info) for fr, info in _current_markers.items() if info.get("color") == _color]
+        timeline.DeleteMarkersByColor(_color)
+        for _fr, _info in _to_readd:
+            if _fr in _rename_map and _fr in _processed_frames:
+                _new_name, _note, _dur, _cdata = _rename_map[_fr]
+                ok = timeline.AddMarker(int(_fr), _color, _new_name, _note, int(_dur), _cdata)
+                print(f"Marker renamed → '{_new_name}' at frame {_fr} (ok={ok})")
+            else:
+                # Unprocessed in-range marker: restore verbatim (shouldn't happen often)
+                timeline.AddMarker(
+                    int(_fr), _color,
+                    _info.get("name", ""),
+                    _info.get("note", ""),
+                    int(_info.get("duration", 1)),
+                    _info.get("customData", ""),
+                )
+    change_page("color")
+
+# --- MOVE MARKERS TO CLIPS (post-grab, requires Edit page) ---
+# For each collected clip marker: add via TimelineItem, then remove timeline marker.
+# Out-of-range markers (when restrict_to_in_out) are never moved: they are restored verbatim.
+if _pending_clip_markers:
+    change_page("edit")
+    # Add clip markers via TimelineItem (appears on clip strips in timeline)
+    # Frame key = marker_frame - (clip_start - timeline_start), same reference as item.GetMarkers()
+    _successful_tl_frames = set()  # timeline frames whose clip marker was actually added
+    for _cmi_mpi, _cmi_src, _cmi_col, _cmi_nm, _cmi_note, _cmi_dur, _cmi_cx, _cmi_tlf, _cmi_item in _pending_clip_markers:
+        try:
+            # If a clip marker already exists at this frame (e.g. from a previous run),
+            # try to remove it first so AddMarker doesn't silently return False.
+            _existing_clip_markers = _cmi_item.GetMarkers() or {}
+            if _cmi_src in _existing_clip_markers:
+                _del_fn = getattr(_cmi_item, 'DeleteMarkerAtFrameNum', None)
+                if callable(_del_fn):
+                    _del_fn(_cmi_src)
+                else:
+                    # No per-frame delete: overwrite by deleting all of this color on the item
+                    _del_color_fn = getattr(_cmi_item, 'DeleteMarkersByColor', None)
+                    if callable(_del_color_fn):
+                        _del_color_fn(_cmi_col)
+            ok = _cmi_item.AddMarker(_cmi_src, _cmi_col, _cmi_nm, _cmi_note, _cmi_dur)
+            if not ok:
+                ok = _cmi_item.AddMarker(_cmi_src, _cmi_col, _cmi_nm, _cmi_note, _cmi_dur, _cmi_cx)
+            print(f"Clip marker → '{_cmi_nm}' frame={_cmi_src} tl_frame={_cmi_tlf} (ok={ok})")
+            if ok:
+                _successful_tl_frames.add(_cmi_tlf)
+        except Exception as e:
+            print(f"Could not add clip marker '{_cmi_nm}': {e}")
+    # Remove timeline markers that were SUCCESSFULLY moved (clip marker ok=True).
+    # Only delete a color's timeline markers if every marker of that color is in-range
+    # (restrict_to_in_out guard: can't use DeleteMarkersByColor without touching out-of-range).
+    _clip_move_tl_frames = _successful_tl_frames  # only frames where clip marker was added
+    _clip_move_colors    = {t[2] for t in _pending_clip_markers if t[7] in _successful_tl_frames}
+    _current_tl_markers  = timeline.GetMarkers() or {}
+    _restrict            = settings.get("restrict_to_in_out", False)
+    for _cmc in _clip_move_colors:
+        _all_of_color = [fr for fr, info in _current_tl_markers.items()
+                         if info.get("color") == _cmc]
+        _out_of_range = [fr for fr in _all_of_color if fr not in _clip_move_tl_frames]
+        if _restrict and _out_of_range:
+            # Can't safely delete without touching out-of-range markers → skip
+            print(f"[move_to_clips] skipping timeline cleanup for color '{_cmc}' "
+                  f"({len(_out_of_range)} out-of-range marker(s) present — would be touched by DeleteMarkersByColor)")
+            continue
+        # Safe to delete: either restrict is off, or every marker of this color is in-range
+        timeline.DeleteMarkersByColor(_cmc)
+        # Re-add any markers that shouldn't have been deleted (only relevant when restrict=False
+        # and the color contained markers not in the processed set, which shouldn't happen, but
+        # guard anyway)
+        for _fr, _info in _current_tl_markers.items():
+            if _info.get("color") == _cmc and _fr not in _clip_move_tl_frames:
+                timeline.AddMarker(
+                    int(_fr), _cmc,
+                    _info.get("name", ""),
+                    _info.get("note", ""),
+                    int(_info.get("duration", 1)),
+                    _info.get("customData", ""),
+                )
+    change_page("color")
 
 # --- EDL EXPORT (post-grab, uses fully populated metadata_by_frame) ---
 if settings.get("export_edl_markers", False) and _edl_markers is not None and _edl_path:

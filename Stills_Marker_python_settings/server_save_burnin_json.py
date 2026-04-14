@@ -590,9 +590,9 @@ def export_preset_to_xml(preset_name: str) -> str:
         })
 
         if key == "custom" or resolve_type is None:
-            # Custom text: cycle Type 128 → 129 → 130 (Resolve limit: 3 slots)
-            if custom_text_count >= 3:
-                continue   # silently skip; caller should have warned the user
+            # Custom text slots: Type 128, 129, 130, 131, …
+            # Resolve < 21 only renders the first 3 (128–130); Resolve 21+ supports more.
+            # We write all of them so presets are forward-compatible.
             resolve_type = 128 + custom_text_count
             custom_text_count += 1
             if key == "custom":
@@ -686,8 +686,9 @@ def send_preset_to_resolve(preset_name: str) -> None:
 
         resolve_type = _OUR_KEY_TO_RESOLVE_TYPE.get(key)
         if key == "custom" or resolve_type is None:
-            if custom_text_count >= 3:
-                continue
+            # Custom text slots: Type 128, 129, 130, 131, …
+            # Resolve < 21 only renders the first 3 (128–130); Resolve 21+ supports more.
+            # We write all of them so presets are forward-compatible.
             resolve_type = 128 + custom_text_count
             custom_text_count += 1
             if key == "custom":
