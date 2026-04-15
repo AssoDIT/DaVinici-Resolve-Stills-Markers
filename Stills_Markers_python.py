@@ -626,6 +626,59 @@ def get_marker_count_by_color(markers):
     return marker_count_by_color
 
 
+def collect_clip_markers(timeline, timeline_start):
+    """Collect markers from Media Pool items visible in the timeline.
+    Returns {frame_offset_from_tl_start: {color, name, note, duration, customData}},
+    same structure as timeline.GetMarkers().
+    Only includes markers whose source frame falls within the clip's visible range.
+    """
+    result = {}
+    track_count = timeline.GetTrackCount("video")
+    print(f"[clip_markers] scanning {track_count} video track(s)")
+    for track_idx in range(1, track_count + 1):
+        items = timeline.GetItemListInTrack("video", track_idx) or []
+        print(f"[clip_markers] track {track_idx}: {len(items)} item(s)")
+        for item in items:
+            item_start    = item.GetStart()
+            left_offset   = item.GetLeftOffset()
+            item_duration = item.GetDuration()
+
+            # TimelineItem markers (placed on the clip in the timeline)
+            ti_markers = item.GetMarkers() or {}
+
+            # MediaPoolItem markers (placed on the clip in the Media Pool)
+            mpi = item.GetMediaPoolItem()
+            mpi_markers = (mpi.GetMarkers() or {}) if mpi else {}
+            clip_name = (mpi.GetClipProperty("Clip Name") or "?") if mpi else "?"
+
+            print(f"[clip_markers]   '{clip_name}' start={item_start} left_offset={left_offset} dur={item_duration} | TI markers={list(ti_markers.keys())} | MPI markers={list(mpi_markers.keys())}")
+
+            # Prefer TimelineItem markers (placed directly on the clip in the timeline)
+            for src_frame, info in ti_markers.items():
+                # TI marker frame = offset from clip start (0 = first visible frame)
+                if src_frame < 0 or src_frame >= item_duration:
+                    print(f"[clip_markers]     TI skip src_frame={src_frame} (out of range)")
+                    continue
+                tl_offset = (item_start - timeline_start) + src_frame
+                print(f"[clip_markers]     TI add src_frame={src_frame} → tl_offset={tl_offset}")
+                if tl_offset not in result:
+                    result[tl_offset] = dict(info)
+
+            # Also include MPI markers not already covered by TI markers
+            for src_frame, info in mpi_markers.items():
+                frame_in_clip = src_frame - left_offset
+                if frame_in_clip < 0 or frame_in_clip >= item_duration:
+                    print(f"[clip_markers]     MPI skip src_frame={src_frame} → frame_in_clip={frame_in_clip}")
+                    continue
+                tl_offset = (item_start - timeline_start) + frame_in_clip
+                print(f"[clip_markers]     MPI add src_frame={src_frame} → tl_offset={tl_offset}")
+                if tl_offset not in result:
+                    result[tl_offset] = dict(info)
+
+    print(f"[clip_markers] total found: {len(result)}")
+    return result
+
+
 def get_timeline_project_resolution(project, timeline):
     return (
         int(timeline.GetSetting("timelineResolutionWidth")),
@@ -1743,6 +1796,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     winID = "com.blackmagicdesign.resolve.stills_marker"
     win_name = "Stills Marker"
 
+    marker_source_combo_boxID = "MarkerSourceComboBox"
     marker_combo_boxID = "MarkersComboBox"
     info_labelID = "InfoLabel"
 
@@ -1785,11 +1839,19 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     _COMPRESS_MODES = ["No compression", "ImageOptim (background)", "ImageOptim (app)"]
     _COMPRESS_MODE_MAP = {
-        "No compression":        "none",
+        "No compression":          "none",
         "ImageOptim (background)": "background",
-        "ImageOptim (app)":      "app",
+        "ImageOptim (app)":        "app",
     }
     _COMPRESS_MODE_MAP_INV = {v: k for k, v in _COMPRESS_MODE_MAP.items()}
+
+    _MARKER_SOURCE_OPTIONS = ["Timeline Markers", "Clip Markers", "Timeline and Clip Markers"]
+    _MARKER_SOURCE_MAP = {
+        "Timeline Markers":            "timeline",
+        "Clip Markers":                "clip",
+        "Timeline and Clip Markers":   "both",
+    }
+    _MARKER_SOURCE_MAP_INV = {v: k for k, v in _MARKER_SOURCE_MAP.items()}
 
     cancel_buttonID = "CancelButton"
     start_buttonID = "StartButton"
@@ -1819,20 +1881,36 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             "WindowTitle": win_name,
             "WindowFlags": window_flags,
             "WindowModality": "ApplicationModal",
-            "FixedSize": [600, 400],
+            "FixedSize": [600, 450],
             "Events": {"Close": True, "KeyPress": True},
         },
         ui.VGroup(
-            {"MinimumSize": [600, 420], "MaximumSize": [600, 420], "Weight": 1},
+            {"MinimumSize": [600, 450], "MaximumSize": [600, 450], "Weight": 1},
             [
                 ui.HGroup({"Weight": 1, "Spacing": 0}, [
                     ui.HGap(14),
                     ui.VGroup({"Weight": 1, "Spacing": 6}, [
-                        # ── Markers ──────────────────────────────────────────────
+                        ui.VGap(4),
+                        # ── Markers (top rows) ───────────────────────────────────
                         ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
+                            {"Weight": 0, "Spacing": 8},
                             [
-                                ui.ComboBox({"Weight": 1, "ID": marker_combo_boxID}),
+                                ui.ComboBox({"Weight": 1, "ID": marker_source_combo_boxID}),
+                                ui.Label(
+                                    {
+                                        "Weight": 0,
+                                        "Alignment": {"AlignRight": True, "AlignVCenter": True},
+                                        "Text": "Color",
+                                    }
+                                ),
+                                ui.ComboBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": marker_combo_boxID,
+                                        "MinimumSize": [80, 0],
+                                        "MaximumSize": [80, 16777215],
+                                    }
+                                ),
                                 ui.Label(
                                     {
                                         "Weight": 0,
@@ -1936,13 +2014,48 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ),
                         ui.VGap(2),
                         hline(1),
-                        # ── Export ───────────────────────────────────────────────
+                        # ── Markers ──────────────────────────────────────────────
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
+                                        "ID": export_edl_markers_check_boxID,
+                                        "Text": "Export EDL markers",
+                                        "Checked": settings.get("export_edl_markers", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": rename_timeline_markers_check_boxID,
+                                        "Text": "Rename markers",
+                                        "Checked": settings.get("rename_timeline_markers", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": move_markers_to_clips_check_boxID,
+                                        "Text": "Move markers to clips",
+                                        "Checked": settings.get("move_markers_to_clips", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                            ],
+                        ),
+                        ui.VGap(2),
+                        hline(1),
+                        # ── Export ───────────────────────────────────────────────
+                        ui.HGroup(
+                            {"Weight": 0, "Spacing": 10},
+                            [
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 1,
                                         "ID": export_check_boxID,
                                         "Text": "Export grabbed stills",
                                         "Checked": settings["export"],
@@ -1960,12 +2073,13 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                 ),
                                 ui.ComboBox(
                                     {
-                                        "Weight": 1,
+                                        "Weight": 0,
                                         "ID": format_combo_boxID,
-                                        "MinimumSize": [140, 0],
-                                        "MaximumSize": [180, 16777215],
+                                        "MinimumSize": [160, 0],
+                                        "MaximumSize": [160, 16777215],
                                     }
                                 ),
+                                ui.HGap(20),
                             ],
                         ),
                         ui.VGap(2),
@@ -2113,54 +2227,22 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         ui.HGap(0, 1),
                                     ],
                                 ),
-                                ui.HGroup(
-                                    {"Weight": 0, "Spacing": 10},
-                                    [
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": open_dest_check_boxID,
-                                                "Text": "Open destination folder",
-                                                "Checked": settings.get("open_destination_folder", False),
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
-                                        ui.HGap(0, 1),
-                                    ],
-                                ),
                             ],
                         ),
-                        # ── Marker options ───────────────────────────────────────
+                        # ── Misc ─────────────────────────────────────────────────
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
-                                        "ID": export_edl_markers_check_boxID,
-                                        "Text": "Export EDL markers",
-                                        "Checked": settings.get("export_edl_markers", False),
+                                        "ID": open_dest_check_boxID,
+                                        "Text": "Open destination folder",
+                                        "Checked": settings.get("open_destination_folder", False),
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-                                ui.CheckBox(
-                                    {
-                                        "Weight": 0,
-                                        "ID": rename_timeline_markers_check_boxID,
-                                        "Text": "Rename timeline markers",
-                                        "Checked": settings.get("rename_timeline_markers", False),
-                                        "Events": {"Toggled": True},
-                                    }
-                                ),
-                                ui.CheckBox(
-                                    {
-                                        "Weight": 0,
-                                        "ID": move_markers_to_clips_check_boxID,
-                                        "Text": "Move markers to clips",
-                                        "Checked": settings.get("move_markers_to_clips", False),
-                                        "Events": {"Toggled": True},
-                                    }
-                                ),
+                                ui.HGap(0, 1),
                             ],
                         ),
                         ui.VGap(2),
@@ -2195,7 +2277,16 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     window_items = main_window.GetItems()
 
     def update_controls():
-        marker_src = markers if not settings["restrict_to_in_out"] else markers_in_out
+        _source  = _MARKER_SOURCE_MAP.get(window_items[marker_source_combo_boxID].CurrentText, "timeline")
+        _restrict = settings["restrict_to_in_out"]
+        if _source == "clip":
+            marker_src = clip_markers if not _restrict else clip_markers_in_out
+        elif _source == "both":
+            _tl = markers if not _restrict else markers_in_out
+            _cl = clip_markers if not _restrict else clip_markers_in_out
+            marker_src = {**_cl, **_tl}  # timeline markers take priority on frame conflicts
+        else:
+            marker_src = markers if not _restrict else markers_in_out
         marker_count_by_color_local = markers_dict["get_marker_count_by_color"](marker_src)
 
         export_on = window_items[export_check_boxID].Checked
@@ -2237,6 +2328,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         compress_enabled = export_on and (settings["format"] in ("jpg", "png")) and detect_system_and_image_optim_installed()
         window_items[compress_combo_boxID].Enabled = compress_enabled
 
+        window_items[open_dest_check_boxID].Enabled = export_on
+
         rename_on = window_items[rename_with_meta_check_boxID].Checked
         window_items[rename_options_groupID].Enabled = rename_on
         window_items[rename_format_combo_boxID].Enabled = rename_on
@@ -2258,6 +2351,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[export_to_line_editID].ToolTip = window_items[export_to_line_editID].Text
 
     def initialize_controls():
+        for label in _MARKER_SOURCE_OPTIONS:
+            window_items[marker_source_combo_boxID].AddItem(label)
+        saved_source = settings.get("marker_source", "timeline")
+        window_items[marker_source_combo_boxID].CurrentText = _MARKER_SOURCE_MAP_INV.get(saved_source, "Timeline Markers")
+
         window_items[marker_combo_boxID].AddItem("Any")
         window_items[marker_combo_boxID].AddItems(markers_dict["colors"])
         window_items[marker_combo_boxID].InsertSeparator(1)
@@ -2311,6 +2409,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         dispatcher.ExitLoop(False)
 
     def OnStartButtonClicked(ev):
+        settings["marker_source"] = _MARKER_SOURCE_MAP.get(
+            window_items[marker_source_combo_boxID].CurrentText, "timeline"
+        )
         settings["markers"] = window_items[marker_combo_boxID].CurrentText
         settings["export"] = window_items[export_check_boxID].Checked
         settings["export_to"] = window_items[export_to_line_editID].Text
@@ -2357,6 +2458,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     def OnClose(ev):
         dispatcher.ExitLoop()
 
+    main_window.On[marker_source_combo_boxID].CurrentIndexChanged = OnGenericToggled
     main_window.On[marker_combo_boxID].CurrentIndexChanged = OnMarkersComboBoxCurrentIndexChanged
     main_window.On[export_check_boxID].Toggled = OnGenericToggled
     main_window.On[restrict_to_in_out_check_boxID].Toggled = OnRestrictToInOutCheckBoxToggled
@@ -2433,120 +2535,132 @@ timeline_settings = {
     "markOut_frame": markOut_frame,
 }
 
-markers = timeline.GetMarkers()
+markers = timeline.GetMarkers() or {}
+clip_markers = collect_clip_markers(timeline, timeline_start)
 
-if not markers:
-    show_alert("No markers found on this timeline.\nAdd at least one marker before running the script.")
+if not markers and not clip_markers:
+    show_alert("No markers found on this timeline or its clips.\nAdd at least one marker before running the script.")
     exit()
 
-if markers:
-    marker_frames_all = sorted(markers.keys())
+# Build in/out-filtered versions of both marker sets
+markers_in_out = {k: v for k, v in markers.items()
+                  if markIn_frame <= (timeline_start + k) <= markOut_frame}
+clip_markers_in_out = {k: v for k, v in clip_markers.items()
+                       if markIn_frame <= (timeline_start + k) <= markOut_frame}
 
-    markers_in_out = markers.copy()
-    marker_to_delete = []
-    for marker_frame in marker_frames_all:
-        marker_offset_frame = timeline_start + marker_frame
-        if marker_offset_frame < markIn_frame or marker_offset_frame > markOut_frame:
-            marker_to_delete.append(marker_frame)
+_out_tl  = len(markers) - len(markers_in_out)
+_out_cl  = len(clip_markers) - len(clip_markers_in_out)
+print(f"Timeline markers: {len(markers)} total, {_out_tl} outside In/Out")
+print(f"Clip markers:     {len(clip_markers)} total, {_out_cl} outside In/Out")
 
-    print(f"delete {len(marker_to_delete)} marker outside of in out points")
-    for marker_frame in marker_to_delete:
-        del markers_in_out[marker_frame]
-
-    marker_count_by_color = markers_dict["get_marker_count_by_color"](
-        markers if not settings["restrict_to_in_out"] else markers_in_out)
-    window = create_window(marker_count_by_color, markers, still_album_name, timeline_settings)
-    window.Show()
-    grab_stills = dispatcher.RunLoop()
-    window.Hide()
-    print("launching script main loop and grab_stills is ", grab_stills)
-
-    if grab_stills:
-        # Create the album now if it didn't exist at startup
-        if still_album is None:
-            still_album = gallery.CreateGalleryStillAlbum()
-            if still_album:
-                gallery.SetAlbumName(still_album, _tl_album_name)
-                gallery.SetCurrentStillAlbum(still_album)
-                print(f"Gallery album created: '{_tl_album_name}'")
-            else:
-                still_album = gallery.GetCurrentStillAlbum()
-                print(f"CreateGalleryStillAlbum() returned None — using current album")
-        assert still_album, "Couldn't get or create a gallery still album"
-
-        initial_state = change_page("color")
-
-        # Build markers source after UI (because settings may have changed)
-        markers_src = markers if not settings.get("restrict_to_in_out", False) else markers_in_out
-        marker_frames = sorted(markers_src.keys())
-
-        # Timeline resolution override (only makes sense for disk export)
-        if settings.get("resize_stills", False) \
-                and int(settings.get("resize_percentage", 100)) > 100 \
-                and settings.get("export", False):
-            tres, tres2, pres, pres2 = timeline_resolution_override(
-                project,
-                timeline,
-                resolution_tuple,
-                settings["resize_percentage"]
-            )
-            print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
-
-        # -------------------------------------------------
-        # Disk export path
-        # -------------------------------------------------
-
-        output_path = None
-
-        if settings.get("export", False):
-
-            output_path = settings["export_to"]
-
-            # Timeline folder
-            if settings.get("create_export_folder_timeline_name", False):
-                timeline_folder = timeline.GetName().replace(" ", "_")
-                output_path = os.path.join(output_path, timeline_folder)
-
-            # Sub folder
-            if settings.get("create_sub_folder", False):
-                subfolder_name = settings.get("sub_folder_name", "").strip()
-                if subfolder_name:
-                    output_path = os.path.join(output_path, subfolder_name.replace(" ", "_"))
-
-            os.makedirs(output_path, exist_ok=True)
-
-        # --- EDL path (no folder creation) ---
-        elif settings.get("export_edl_markers", False):
-            output_path = settings["export_to"]
-
-        # EDL export — prepare paths/filters now, actual write happens after grab loop
-        # so that metadata_by_frame is fully populated when export_markers_to_edl runs.
-        _edl_markers = None
-        _edl_path    = None
-        if settings.get("export_edl_markers", False):
-
-            selected_color = settings.get("markers", "Any")
-
-            if selected_color == "Any":
-                _edl_markers = markers_src
-            else:
-                _edl_markers = {
-                    fr: m for fr, m in markers_src.items()
-                    if m and m.get("color") == selected_color
-                }
-
-            edl_filename = f"{timeline.GetName()}_stillsMarkers.edl".replace(" ", "_")
-            _edl_path = os.path.join(
-                output_path if output_path else settings["export_to"],
-                edl_filename
-            )
-
-# Always initialize so post-loop blocks don't NameError when grab_stills=False
-_pending_marker_renames = []
-_pending_clip_markers   = []
+marker_count_by_color = markers_dict["get_marker_count_by_color"](
+    markers if not settings["restrict_to_in_out"] else markers_in_out)
+window = create_window(marker_count_by_color, markers, still_album_name, timeline_settings)
+window.Show()
+grab_stills = dispatcher.RunLoop()
+window.Hide()
+print("launching script main loop and grab_stills is ", grab_stills)
 
 if grab_stills:
-    markers_src = markers if not settings.get("restrict_to_in_out", False) else markers_in_out
+    # Create the album now if it didn't exist at startup
+    if still_album is None:
+        still_album = gallery.CreateGalleryStillAlbum()
+        if still_album:
+            gallery.SetAlbumName(still_album, _tl_album_name)
+            gallery.SetCurrentStillAlbum(still_album)
+            print(f"Gallery album created: '{_tl_album_name}'")
+        else:
+            still_album = gallery.GetCurrentStillAlbum()
+            print(f"CreateGalleryStillAlbum() returned None — using current album")
+    assert still_album, "Couldn't get or create a gallery still album"
+
+    initial_state = change_page("color")
+
+    # Build markers source after UI (respects marker_source + restrict_to_in_out)
+    _src     = settings.get("marker_source", "timeline")
+    _restrict = settings.get("restrict_to_in_out", False)
+    if _src == "clip":
+        markers_src = clip_markers if not _restrict else clip_markers_in_out
+    elif _src == "both":
+        _tl = markers if not _restrict else markers_in_out
+        _cl = clip_markers if not _restrict else clip_markers_in_out
+        markers_src = {**_cl, **_tl}  # timeline markers take priority on frame conflicts
+    else:
+        markers_src = markers if not _restrict else markers_in_out
+    marker_frames = sorted(markers_src.keys())
+
+    # Timeline resolution override (only makes sense for disk export)
+    if settings.get("resize_stills", False) \
+            and int(settings.get("resize_percentage", 100)) > 100 \
+            and settings.get("export", False):
+        tres, tres2, pres, pres2 = timeline_resolution_override(
+            project,
+            timeline,
+            resolution_tuple,
+            settings["resize_percentage"]
+        )
+        print(f"timeline resolution override {tres} {tres2} {pres} {pres2}")
+
+    # -------------------------------------------------
+    # Disk export path
+    # -------------------------------------------------
+
+    output_path = None
+
+    if settings.get("export", False):
+
+        output_path = settings["export_to"]
+
+        # Timeline folder
+        if settings.get("create_export_folder_timeline_name", False):
+            timeline_folder = timeline.GetName().replace(" ", "_")
+            output_path = os.path.join(output_path, timeline_folder)
+
+        # Sub folder
+        if settings.get("create_sub_folder", False):
+            subfolder_name = settings.get("sub_folder_name", "").strip()
+            if subfolder_name:
+                output_path = os.path.join(output_path, subfolder_name.replace(" ", "_"))
+
+        os.makedirs(output_path, exist_ok=True)
+
+    # --- EDL path (no folder creation) ---
+    elif settings.get("export_edl_markers", False):
+        output_path = settings["export_to"]
+
+    # EDL export — prepare paths/filters now, actual write happens after grab loop
+    # so that metadata_by_frame is fully populated when export_markers_to_edl runs.
+    _edl_markers = None
+    _edl_path    = None
+    if settings.get("export_edl_markers", False):
+
+        selected_color = settings.get("markers", "Any")
+
+        if selected_color == "Any":
+            _edl_markers = markers_src
+        else:
+            _edl_markers = {
+                fr: m for fr, m in markers_src.items()
+                if m and m.get("color") == selected_color
+            }
+
+        edl_filename = f"{timeline.GetName()}_stillsMarkers.edl".replace(" ", "_")
+        _edl_path = os.path.join(
+            output_path if output_path else settings["export_to"],
+            edl_filename
+        )
+
+# Always initialize so post-loop blocks don't NameError when grab_stills=False
+output_path         = None
+initial_state       = None
+_pending_marker_renames = []
+_pending_clip_markers   = []
+all_exported_files  = []
+metadata_json       = {}
+metadata_by_frame   = {}
+_still_naming       = ""
+
+if grab_stills:
     marker_frames = sorted(markers_src.keys())
 
     # --- METADATA COLLECTION DURING GRAB ---
@@ -2846,35 +2960,56 @@ _processed_frames = set(markers_src.keys()) if grab_stills else set()
 # When restrict_to_in_out is on and a color has out-of-range markers, we cannot delete+re-add
 # without touching them, so we skip that color entirely (leave all markers of that color as-is).
 if _pending_marker_renames:
+    _rename_src = settings.get("marker_source", "timeline")
     change_page("edit")
-    _rename_map      = {_rmf: (_rmn, _rmno, _rmd, _rmx) for _rmf, _rmc, _rmn, _rmno, _rmd, _rmx in _pending_marker_renames}
-    _colors_to_redo  = {_rmc for _, _rmc, _, _, _, _ in _pending_marker_renames}
-    _current_markers = timeline.GetMarkers() or {}
-    _restrict        = settings.get("restrict_to_in_out", False)
-    for _color in _colors_to_redo:
-        _all_of_color_r = [fr for fr, info in _current_markers.items() if info.get("color") == _color]
-        _out_of_range_r = [fr for fr in _all_of_color_r if fr not in _processed_frames]
-        if _restrict and _out_of_range_r:
-            # Cannot rename without deleting out-of-range markers too → skip
-            print(f"[rename_markers] skipping color '{_color}' "
-                  f"({len(_out_of_range_r)} out-of-range marker(s) would be touched)")
-            continue
-        _to_readd = [(fr, info) for fr, info in _current_markers.items() if info.get("color") == _color]
-        timeline.DeleteMarkersByColor(_color)
-        for _fr, _info in _to_readd:
-            if _fr in _rename_map and _fr in _processed_frames:
-                _new_name, _note, _dur, _cdata = _rename_map[_fr]
-                ok = timeline.AddMarker(int(_fr), _color, _new_name, _note, int(_dur), _cdata)
-                print(f"Marker renamed → '{_new_name}' at frame {_fr} (ok={ok})")
-            else:
-                # Unprocessed in-range marker: restore verbatim (shouldn't happen often)
-                timeline.AddMarker(
-                    int(_fr), _color,
-                    _info.get("name", ""),
-                    _info.get("note", ""),
-                    int(_info.get("duration", 1)),
-                    _info.get("customData", ""),
-                )
+    _rename_map     = {_rmf: (_rmc, _rmn, _rmno, _rmd, _rmx) for _rmf, _rmc, _rmn, _rmno, _rmd, _rmx in _pending_marker_renames}
+    _colors_to_redo = {_rmc for _, _rmc, _, _, _, _ in _pending_marker_renames}
+    _restrict       = settings.get("restrict_to_in_out", False)
+
+    # ── Timeline markers rename ───────────────────────────────────────────────
+    if _rename_src in ("timeline", "both"):
+        _current_markers = timeline.GetMarkers() or {}
+        for _color in _colors_to_redo:
+            _all_of_color_r = [fr for fr, info in _current_markers.items() if info.get("color") == _color]
+            _out_of_range_r = [fr for fr in _all_of_color_r if fr not in _processed_frames]
+            if _restrict and _out_of_range_r:
+                print(f"[rename_markers] skipping color '{_color}' "
+                      f"({len(_out_of_range_r)} out-of-range marker(s) would be touched)")
+                continue
+            _to_readd = [(fr, info) for fr, info in _current_markers.items() if info.get("color") == _color]
+            timeline.DeleteMarkersByColor(_color)
+            for _fr, _info in _to_readd:
+                if _fr in _rename_map and _fr in _processed_frames:
+                    _rmc2, _new_name, _note, _dur, _cdata = _rename_map[_fr]
+                    ok = timeline.AddMarker(int(_fr), _color, _new_name, _note, int(_dur), _cdata)
+                    print(f"Marker renamed → '{_new_name}' at frame {_fr} (ok={ok})")
+                else:
+                    timeline.AddMarker(
+                        int(_fr), _color,
+                        _info.get("name", ""),
+                        _info.get("note", ""),
+                        int(_info.get("duration", 1)),
+                        _info.get("customData", ""),
+                    )
+
+    # ── Clip (TimelineItem) markers rename ────────────────────────────────────
+    if _rename_src in ("clip", "both"):
+        for _track_idx in range(1, timeline.GetTrackCount("video") + 1):
+            for _ti_item in (timeline.GetItemListInTrack("video", _track_idx) or []):
+                _ti_start   = _ti_item.GetStart()
+                _ti_markers = _ti_item.GetMarkers() or {}
+                for _ti_frame, _ti_info in list(_ti_markers.items()):
+                    _ti_tl_offset = (_ti_start - timeline_start) + _ti_frame
+                    if _ti_tl_offset not in _rename_map:
+                        continue
+                    _rmc2, _new_name, _note, _dur, _cdata = _rename_map[_ti_tl_offset]
+                    _del_fn = getattr(_ti_item, "DeleteMarkerAtFrameNum", None)
+                    if callable(_del_fn):
+                        _del_fn(_ti_frame)
+                    ok = _ti_item.AddMarker(_ti_frame, _ti_info.get("color", "Blue"),
+                                            _new_name, _note, int(_dur), _cdata)
+                    print(f"Clip marker renamed → '{_new_name}' frame={_ti_frame} tl_offset={_ti_tl_offset} (ok={ok})")
+
     change_page("color")
 
 # --- MOVE MARKERS TO CLIPS (post-grab, requires Edit page) ---
@@ -2951,15 +3086,16 @@ if settings.get("export_edl_markers", False) and _edl_markers is not None and _e
     )
 
 # --- WRITE FULL METADATA JSON (post-grab, complete data) ---
-try:
-    metadata_json_path = os.path.join(
-        output_path,
-        f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
-    )
-    with open(metadata_json_path, "w", encoding="utf-8") as jf:
-        json.dump(metadata_json, jf, indent=4)
-except Exception as e:
-    print(f"Could not write metadata JSON: {e}")
+if grab_stills and output_path:
+    try:
+        metadata_json_path = os.path.join(
+            output_path,
+            f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
+        )
+        with open(metadata_json_path, "w", encoding="utf-8") as jf:
+            json.dump(metadata_json, jf, indent=4)
+    except Exception as e:
+        print(f"Could not write metadata JSON: {e}")
 
 # --- IMAGEOPTIM COMPRESSION ---
 # --- IMAGEOPTIM COMPRESSION ---
@@ -2971,9 +3107,11 @@ if _compress_mode != "none" and settings.get("export", False) and all_exported_f
     if detect_system_and_image_optim_installed():
         try:
             if _compress_mode == "background":
-                # Traitement silencieux — ImageOptim ne passe pas au premier plan
+                # Invoke the binary directly — no GUI, processes files silently
                 subprocess.Popen(
-                    ["open", "-a", "ImageOptim", "--background"] + all_exported_files
+                    ["/Applications/ImageOptim.app/Contents/MacOS/ImageOptim"] + all_exported_files,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
                 print(f"ImageOptim launched in background on {len(all_exported_files)} file(s).")
             else:
@@ -2996,14 +3134,15 @@ if settings.get("remove_drx", False) and settings.get("export", False):
                     except Exception as e:
                         print(f"Could not remove DRX {fn}: {e}")
 # --- OPTIONAL CLEANUP: remove metadata JSON after processing ---
-if settings.get("export", False):
+if grab_stills and settings.get("export", False):
     delete_metadata_json(output_path, timeline.GetName(), export_to=settings.get("export_to"))
 
 # --- OPEN DESTINATION FOLDER IN FINDER ---
-if settings.get("open_destination_folder", False) and output_path and os.path.isdir(output_path):
+if grab_stills and settings.get("open_destination_folder", False) and output_path and os.path.isdir(output_path):
     try:
         subprocess.Popen(["open", output_path])
     except Exception as e:
         print(f"Could not open destination folder: {e}")
 
-restore_page(initial_state)
+if initial_state:
+    restore_page(initial_state)
