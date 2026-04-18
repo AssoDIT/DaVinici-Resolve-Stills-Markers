@@ -2561,6 +2561,8 @@ grab_stills = dispatcher.RunLoop()
 window.Hide()
 print("launching script main loop and grab_stills is ", grab_stills)
 
+output_path = None  # set here so it survives across both if grab_stills: blocks
+
 if grab_stills:
     # Create the album now if it didn't exist at startup
     if still_album is None:
@@ -2651,7 +2653,6 @@ if grab_stills:
         )
 
 # Always initialize so post-loop blocks don't NameError when grab_stills=False
-output_path         = None
 initial_state       = None
 _pending_marker_renames = []
 _pending_clip_markers   = []
