@@ -520,6 +520,45 @@ def apply_naming_template(template, meta_block):
     return result
 
 
+def apply_vertical_9_16_crop(img_path, safety=100.0):
+    """
+    Rogne les côtés d'un still 16:9 pour ne garder que la zone 9:16 centrale.
+    Aucun upscale — l'image de sortie a les dimensions du crop.
+    """
+    try:
+        with Image.open(img_path) as img:
+            W, H = img.size
+            src = img.convert("RGB")
+
+        # Zone 9:16 centrée
+        crop_w = int(round(H * 9.0 / 16.0))
+        crop_h = H
+
+        safety_f = max(0.5, min(1.0, float(safety) / 100.0))
+        if safety_f < 1.0:
+            crop_w = int(round(crop_w * safety_f))
+            crop_h = int(round(crop_h * safety_f))
+
+        x = (W - crop_w) // 2
+        y = (H - crop_h) // 2
+
+        print(f"Vertical 9:16 crop: ({x},{y}) {crop_w}×{crop_h} safety={safety:.1f}%")
+
+        cropped = src.crop((x, y, x + crop_w, y + crop_h))
+
+        ext = os.path.splitext(img_path)[1].lower()
+        if ext in (".jpg", ".jpeg"):
+            cropped.save(img_path, quality=95)
+        else:
+            cropped.save(img_path)
+
+        print(f"Vertical 9:16 crop applied: {os.path.basename(img_path)}")
+    except Exception as e:
+        print(f"Could not apply vertical 9:16 crop: {e}")
+
+    return img_path
+
+
 def apply_open_gate_crop(img_path, native_w, native_h, safety=100.0):
     """
     Extract the 16:9 delivery area from an open-gate still and upscale to 1920x1080.
@@ -1077,7 +1116,7 @@ _CUSTOM_TO_RESOLVE = {
 #   - opacity
 #   - align ("left" | "center" | "right")
 # ---------------------------------------------------------------------------
-def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
+def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None, vertical_crop=False):
     # Accept either {"elements":[...]} OR direct list format [...]
     if not burnin_cfg:
         return image_path
@@ -1095,44 +1134,43 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None):
 
     # ------------------------------------------------------------
     # Read preview ratio settings from web JSON
-    # Expected structure:
-    # burnin_cfg = {
-    #   "preview": {
-    #       "ratio": 2.39,
-    #       "mode": "fit",
-    #       "mask_style": "bars_lines",
-    #       "mask_opacity": 1.0
-    #   }
-    # }
+    # When vertical_crop=True the image already occupies its full
+    # dimensions — skip ratio blanking and use the full frame.
     # ------------------------------------------------------------
 
     preview_cfg = burnin_cfg.get("preview", {}) if isinstance(burnin_cfg, dict) else {}
 
-    try:
-        ratio = float(preview_cfg.get("ratio", 1.77))
-    except:
-        ratio = 1.77
-
-    # Normalize mode and mask_style to avoid case / whitespace mismatches
-    mode = str(preview_cfg.get("mode", "fit") or "fit").strip().lower()
-    mask_style = str(preview_cfg.get("mask_style", "bars") or "bars").strip().lower()
-
-    try:
-        mask_opacity = float(preview_cfg.get("mask_opacity", 1.0))
-    except:
+    if vertical_crop:
+        # Image is already cropped to portrait — full frame is the reference
+        cropX, cropY, cropW, cropH = 0, 0, W, H
+        mask_style = "none"
         mask_opacity = 1.0
+    else:
+        try:
+            ratio = float(preview_cfg.get("ratio", 1.77))
+        except:
+            ratio = 1.77
 
-    mask_opacity = max(0.0, min(1.0, mask_opacity))
+        # Normalize mode and mask_style to avoid case / whitespace mismatches
+        mode = str(preview_cfg.get("mode", "fit") or "fit").strip().lower()
+        mask_style = str(preview_cfg.get("mask_style", "bars") or "bars").strip().lower()
 
-    cropW = W
-    cropH = int(W / ratio)
+        try:
+            mask_opacity = float(preview_cfg.get("mask_opacity", 1.0))
+        except:
+            mask_opacity = 1.0
 
-    if cropH > H:
-        cropH = H
-        cropW = int(H * ratio)
+        mask_opacity = max(0.0, min(1.0, mask_opacity))
 
-    cropX = int((W - cropW) / 2)
-    cropY = int((H - cropH) / 2)
+        cropW = W
+        cropH = int(W / ratio)
+
+        if cropH > H:
+            cropH = H
+            cropW = int(H * ratio)
+
+        cropX = int((W - cropW) / 2)
+        cropY = int((H - cropH) / 2)
 
     # ------------------------------------------------------------
     # MASK DRAWING (black bars + optional white frame)
@@ -2687,6 +2725,7 @@ if grab_stills:
     _ogc = _burnin_cfg.get("open_gate_crop", {})
     _still_naming = str(_burnin_cfg.get("still_naming", "")).strip()
     _ogc_enabled = bool(settings.get("open_gate_crop", False))
+    _frameline_orientation = str(_burnin_cfg.get("frameline_orientation", "horizontal_16_9"))
     if _ogc_enabled:
         _ogc_preset = _ogc.get("preset", "arri_alexa35")
         if _ogc_preset == "custom":
@@ -2695,7 +2734,8 @@ if grab_stills:
         else:
             _ogc_nw, _ogc_nh = _OPEN_GATE_PRESETS.get(_ogc_preset, (4608, 3164))
         _ogc_safety = float(_ogc.get("safety", 100.0))
-        print(f"Open Gate Crop enabled: {_ogc_preset} ({_ogc_nw}x{_ogc_nh}), safety={_ogc_safety}%")
+        print(f"Open Gate Crop enabled: orientation={_frameline_orientation}, "
+              f"preset={_ogc_preset} ({_ogc_nw}x{_ogc_nh}), safety={_ogc_safety}%")
 
     # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
     for marker_frame in marker_frames:
@@ -2902,9 +2942,12 @@ if grab_stills:
                     _resize_on  = settings.get("resize_stills", False)
                     _resize_pct = int(settings.get("resize_percentage", 50))
 
-                    # OGC always upscales to 1920x1080 so burnins are applied at reference size
+                    # OGC crop — orientation drives which function is called
                     if _ogc_enabled:
-                        apply_open_gate_crop(img_path, _ogc_nw, _ogc_nh, safety=_ogc_safety)
+                        if _frameline_orientation == "vertical_9_16":
+                            apply_vertical_9_16_crop(img_path, safety=_ogc_safety)
+                        else:
+                            apply_open_gate_crop(img_path, _ogc_nw, _ogc_nh, safety=_ogc_safety)
 
                     # Fit HD canvas (skipped when OGC already produced 1920x1080)
                     if settings.get("fit_to_1920_canvas", False) and not _ogc_enabled:
@@ -2917,7 +2960,8 @@ if grab_stills:
                             image_path=img_path,
                             metadata_block=meta_block,
                             burnin_cfg=burnin_web_settings,
-                            out_path=img_path
+                            out_path=img_path,
+                            vertical_crop=(_ogc_enabled and _frameline_orientation == "vertical_9_16")
                         )
 
                     # Resize scales the final image (including burnins) proportionally

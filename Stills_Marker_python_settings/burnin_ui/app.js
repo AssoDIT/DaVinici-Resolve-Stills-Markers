@@ -71,6 +71,9 @@ let state = {
   open_gate_crop_custom_h: 2,
   open_gate_safety: 100,
   ogc_show_frameline: false,
+  frameline_orientation: "horizontal_16_9", // "horizontal_16_9" | "vertical_9_16"
+  frameline_offset_x: 0,  // % of canvas width,  0 = centré
+  frameline_offset_y: 0,  // % of canvas height, 0 = centré
   still_naming_template: "",
 };
 
@@ -781,8 +784,8 @@ function bindInputs(){
       return;
     }
 
-    // Arrow keys: move focused token by 0.1 step
-    const ARROW_STEP = 0.001;
+    // Arrow keys: move focused token — 0.1% normal, 1% with Shift
+    const ARROW_STEP = ev.shiftKey ? 0.01 : 0.001;
     const arrowMap = { ArrowLeft: [-ARROW_STEP, 0], ArrowRight: [ARROW_STEP, 0], ArrowUp: [0, -ARROW_STEP], ArrowDown: [0, ARROW_STEP] };
     if(arrowMap[ev.key] && state.selectedIndex != null){
       ev.preventDefault();
@@ -916,8 +919,62 @@ function bindInputs(){
     ogcFramelineToggle.addEventListener("change", (e)=>{
       state.ogc_show_frameline = e.target.checked;
       render();
+      scheduleSave();
     });
   }
+
+  const framelineOrientationEl = document.getElementById("framelineOrientation");
+  if(framelineOrientationEl){
+    framelineOrientationEl.addEventListener("change", (e)=>{
+      state.frameline_orientation = e.target.value;
+      updateOpenGateCropUI();
+      render();
+      scheduleSave();
+    });
+  }
+
+  const framelineOffsetXEl = document.getElementById("framelineOffsetX");
+  if(framelineOffsetXEl){
+    framelineOffsetXEl.addEventListener("input", (e)=>{
+      state.frameline_offset_x = parseFloat(e.target.value) || 0;
+      render();
+      scheduleSave();
+    });
+  }
+
+  const framelineOffsetYEl = document.getElementById("framelineOffsetY");
+  if(framelineOffsetYEl){
+    framelineOffsetYEl.addEventListener("input", (e)=>{
+      state.frameline_offset_y = parseFloat(e.target.value) || 0;
+      render();
+      scheduleSave();
+    });
+  }
+
+  // Double-clic sur les labels → reset à la valeur par défaut
+  document.getElementById("lblFramelineSafety")?.addEventListener("dblclick", ()=>{
+    state.open_gate_safety = 100;
+    const el = document.getElementById("openGateSafety");
+    if(el) el.value = 100;
+    render();
+    scheduleSave();
+  });
+
+  document.getElementById("lblOffsetX")?.addEventListener("dblclick", ()=>{
+    state.frameline_offset_x = 0;
+    const el = document.getElementById("framelineOffsetX");
+    if(el) el.value = 0;
+    render();
+    scheduleSave();
+  });
+
+  document.getElementById("lblOffsetY")?.addEventListener("dblclick", ()=>{
+    state.frameline_offset_y = 0;
+    const el = document.getElementById("framelineOffsetY");
+    if(el) el.value = 0;
+    render();
+    scheduleSave();
+  });
 
   // --- Still Naming ---
   const stillNamingInput = document.getElementById("stillNamingTemplate");
@@ -1548,16 +1605,35 @@ function render(){
   const canvasRatio = W / H;
   const targetRatio = state.image_ratio || 1.77;
 
-  // Pre-compute OGC frameline rect so bars and tokens can be drawn inside it when active
+  // Pre-compute frameline rect (OGC horizontal or vertical 9:16) with optional X/Y offset
   let fl = null;
   if(state.ogc_show_frameline === true){
-    const _nr    = getOGCNativeRatio();
-    const _sf    = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
-    const _cw    = H * _nr;
-    let   _fw    = Math.min(_cw * _sf, W);
-    let   _fh    = Math.min((_cw / (16/9)) * _sf, H);
-    fl = { x: (W - _fw) / 2, y: (H - _fh) / 2, w: _fw, h: _fh };
+    const ox = ((state.frameline_offset_x || 0) / 100) * W;
+    const oy = ((state.frameline_offset_y || 0) / 100) * H;
+
+    if(state.frameline_orientation === "vertical_9_16"){
+      const _sf = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+      const _vw = H * (9 / 16) * _sf;
+      const _vh = H * _sf;
+      fl = {
+        x: clamp((W - _vw) / 2 + ox, 0, W - _vw),
+        y: clamp((H - _vh) / 2 + oy, 0, H - _vh),
+        w: _vw, h: _vh, type: "vertical_9_16"
+      };
+    } else {
+      const _nr = getOGCNativeRatio();
+      const _sf = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+      const _cw = H * _nr;
+      const _fw = Math.min(_cw * _sf, W);
+      const _fh = Math.min((_cw / (16 / 9)) * _sf, H);
+      fl = {
+        x: clamp((W - _fw) / 2 + ox, 0, W - _fw),
+        y: clamp((H - _fh) / 2 + oy, 0, H - _fh),
+        w: _fw, h: _fh, type: "ogc"
+      };
+    }
   }
+
   activeFrameline = fl; // expose to drag handlers
 
   if(state.image_ratio_mode === "fit"){
@@ -1703,8 +1779,8 @@ function render(){
 
   // --- Draw order when frameline active: bars → frameline border → tokens ---
 
-  // 1) Ratio bars/blanking INSIDE the frameline (clipped)
-  if(fl){
+  // 1) Ratio bars/blanking INSIDE the OGC frameline (horizontal only — not for vertical)
+  if(fl && fl.type !== "vertical_9_16"){
     const {x: fx, y: fy, w: fw, h: fh} = fl;
     const flRatio = fw / fh;
     let bX = fx, bY = fy, bW = fw, bH = fh;
@@ -1747,25 +1823,49 @@ function render(){
     }
   }
 
-  // 2) Frameline border (orange dashed) — above bars, below tokens
+  // 1b) Frameline active — griser la zone extérieure au cadre (les deux orientations)
   if(fl){
-    const {x: fx, y: fy, w: fw, h: fh} = fl;
+    const {x: _ox, y: _oy, w: _ow, h: _oh} = fl;
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = "#000";
+    // top band
+    if(_oy > 0)               ctx.fillRect(0, 0, W, _oy);
+    // bottom band
+    if(_oy + _oh < H)         ctx.fillRect(0, _oy + _oh, W, H - _oy - _oh);
+    // left strip (between top and bottom bands)
+    if(_ox > 0)               ctx.fillRect(0, _oy, _ox, _oh);
+    // right strip
+    if(_ox + _ow < W)         ctx.fillRect(_ox + _ow, _oy, W - _ox - _ow, _oh);
+    ctx.restore();
+  }
+
+  // 2) Frameline border — above bars, below tokens
+  if(fl){
+    const {x: fx, y: fy, w: fw, h: fh, type: flType} = fl;
     ctx.save();
     ctx.globalAlpha = 1.0;
+
     ctx.strokeStyle = "rgba(255, 165, 0, 0.85)";
-    ctx.lineWidth   = 1.5;
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([8, 4]);
     ctx.strokeRect(fx, fy, fw, fh);
 
-    const safetyPct = Math.round(state.open_gate_safety ?? 100);
-    const preset    = state.open_gate_crop_preset || "arri_alexa35";
-    const flLabel   = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
-    ctx.font        = "bold 11px Arial";
+    let flLabel;
+    if(flType === "vertical_9_16"){
+      flLabel = "9:16 Vertical";
+    } else {
+      const safetyPct = Math.round(state.open_gate_safety ?? 100);
+      const preset    = state.open_gate_crop_preset || "arri_alexa35";
+      flLabel = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
+    }
+
+    ctx.font         = "bold 11px Arial";
     ctx.textBaseline = "bottom";
-    ctx.fillStyle   = "rgba(0,0,0,0.55)";
-    const lw        = ctx.measureText(flLabel).width;
+    ctx.fillStyle    = "rgba(0,0,0,0.55)";
+    const lw         = ctx.measureText(flLabel).width;
     ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
-    ctx.fillStyle   = "rgba(255,165,0,0.95)";
+    ctx.fillStyle    = flType === "vertical_9_16" ? "rgba(0,210,255,0.95)" : "rgba(255,165,0,0.95)";
     ctx.fillText(flLabel, fx + 8, fy + 19);
     ctx.restore();
   }
@@ -1980,16 +2080,29 @@ async function loadFromServer(){
     if(ogcHEl) ogcHEl.value = state.open_gate_crop_custom_h || 2;
     const ogcSafeEl = document.getElementById("openGateSafety");
     if(ogcSafeEl) ogcSafeEl.value = state.open_gate_safety ?? 100;
-    updateOpenGateCropUI();
 
     // Still Naming
     if(typeof data.still_naming === "string") state.still_naming_template = data.still_naming;
     const stillNamingEl = document.getElementById("stillNamingTemplate");
     if(stillNamingEl) stillNamingEl.value = state.still_naming_template || "";
 
-    // Sync frameline toggle from DOM (browser may restore unchecked state across reloads)
+    // Frameline toggle — lire depuis le JSON, puis synchroniser le DOM
+    if(data.open_gate_crop && typeof data.open_gate_crop.show_frameline === "boolean")
+      state.ogc_show_frameline = data.open_gate_crop.show_frameline;
     const _framelineEl = document.getElementById("ogcFramelineToggle");
-    if(_framelineEl) state.ogc_show_frameline = _framelineEl.checked;
+    if(_framelineEl) _framelineEl.checked = state.ogc_show_frameline;
+
+    // Frameline orientation + offsets
+    if(typeof data.frameline_orientation === "string") state.frameline_orientation = data.frameline_orientation;
+    if(typeof data.frameline_offset_x === "number") state.frameline_offset_x = data.frameline_offset_x;
+    if(typeof data.frameline_offset_y === "number") state.frameline_offset_y = data.frameline_offset_y;
+    const _flOrientEl = document.getElementById("framelineOrientation");
+    if(_flOrientEl) _flOrientEl.value = state.frameline_orientation || "horizontal_16_9";
+    updateOpenGateCropUI(); // appelé ici, après que frameline_orientation est chargé
+    const _flOxEl = document.getElementById("framelineOffsetX");
+    if(_flOxEl) _flOxEl.value = state.frameline_offset_x || 0;
+    const _flOyEl = document.getElementById("framelineOffsetY");
+    if(_flOyEl) _flOyEl.value = state.frameline_offset_y || 0;
 
     updateCanvasRatio();
 
@@ -2107,7 +2220,12 @@ async function saveToServer(){
         custom_w: Number(state.open_gate_crop_custom_w) || 3,
         custom_h: Number(state.open_gate_crop_custom_h) || 2,
         safety: Number(state.open_gate_safety) ?? 100,
+        show_frameline: state.ogc_show_frameline === true,
       },
+
+      frameline_orientation: state.frameline_orientation || "horizontal_16_9",
+      frameline_offset_x: Number(state.frameline_offset_x) || 0,
+      frameline_offset_y: Number(state.frameline_offset_y) || 0,
 
       still_naming: state.still_naming_template || "",
     };
@@ -2129,6 +2247,8 @@ async function saveToServer(){
 function updateOpenGateCropUI(){
   const customWrap = document.getElementById("openGateCropCustomWrap");
   if(customWrap) customWrap.style.display = state.open_gate_crop_preset === "custom" ? "flex" : "none";
+  const presetEl = document.getElementById("openGateCropPreset");
+  if(presetEl) presetEl.disabled = state.frameline_orientation === "vertical_9_16";
 }
 
 function clamp(v,a,b){

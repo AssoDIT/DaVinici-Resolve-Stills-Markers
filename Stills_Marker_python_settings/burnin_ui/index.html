@@ -87,42 +87,63 @@
             <input id="maskOpacity" type="range" min="0" max="1" step="0.01" value="1" />
             <span id="maskOpacityVal" class="liveVal">1.00</span>
           </div>
+
         </div>
 
         <div class="sep"></div>
 
         <div class="row ratioControls" id="openGateCropRow">
+
+          <!-- 1. Frameline toggle + safety -->
           <div class="inlineField">
-            <label>Native Format</label>
-            <select id="openGateCropPreset">
-              <option value="arri_alexa35">Arri Alexa35 4.6K OG</option>
-              <option value="arri_alexalf">Arri AlexaLF 4.5K OG</option>
-              <option value="sony_venice1">Sony Venice1 6K 3:2</option>
-              <option value="sony_venice2">Sony Venice2 8.6K 3:2</option>
-              <option value="custom">Custom</option>
+            <label id="lblFramelineSafety" style="cursor:default;" title="Double-clic pour remettre à 100%">Frameline</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="ogcFramelineToggle" style="width:14px;height:14px;flex-shrink:0;" />
+              <input type="number" id="openGateSafety" min="50" max="100" value="100" step="0.5" style="width:68px;flex-shrink:0;" />
+              <span style="font-size:11px;color:#999">%</span>
+            </div>
+          </div>
+
+          <!-- 2. Orientation H/V -->
+          <div class="inlineField">
+            <label>Orientation</label>
+            <select id="framelineOrientation">
+              <option value="horizontal_16_9" selected>H 16:9</option>
+              <option value="vertical_9_16">V 9:16</option>
             </select>
           </div>
-          <div id="openGateCropCustomWrap" style="display:none;grid-column:2/4;align-items:flex-end;gap:12px;flex-direction:row;">
-            <div class="inlineField">
-              <label>Width</label>
-              <input type="number" id="openGateCropW" min="1" max="20000" value="3" style="width:80px" />
-            </div>
-            <div class="inlineField">
-              <label>Height</label>
-              <input type="number" id="openGateCropH" min="1" max="20000" value="2" style="width:80px" />
-            </div>
-          </div>
-          <div class="inlineField" style="grid-column:4;">
-            <label>Safety Area</label>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" id="openGateSafety" min="50" max="100" value="100" step="0.5" style="width:65px" />
-              <span style="font-size:12px;color:#999">%</span>
-              <label style="display:flex;align-items:center;gap:4px;color:#666;font-size:11px;cursor:pointer;margin-left:4px;">
-                <input type="checkbox" id="ogcFramelineToggle" style="width:12px;height:12px;" />
-                frameline
-              </label>
+
+          <!-- 3. Native Format (+ custom W/H shown inline) -->
+          <div class="inlineField">
+            <label>Native Format</label>
+            <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:nowrap;">
+              <select id="openGateCropPreset" style="flex:1;min-width:0;">
+                <option value="arri_alexa35">Arri Alexa35 4.6K OG</option>
+                <option value="arri_alexalf">Arri AlexaLF 4.5K OG</option>
+                <option value="sony_venice1">Sony Venice1 6K 3:2</option>
+                <option value="sony_venice2">Sony Venice2 8.6K 3:2</option>
+                <option value="custom">Custom</option>
+              </select>
+              <div id="openGateCropCustomWrap" style="display:none;flex-direction:row;align-items:center;gap:4px;">
+                <input type="number" id="openGateCropW" min="1" max="20000" value="3" style="width:72px;" />
+                <span style="font-size:11px;color:#999">×</span>
+                <input type="number" id="openGateCropH" min="1" max="20000" value="2" style="width:72px;" />
+              </div>
             </div>
           </div>
+
+          <!-- 4. Offset X/Y -->
+          <div class="inlineField">
+            <label>Offset</label>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span id="lblOffsetX" style="font-size:11px;color:#999;cursor:default;" title="Double-clic pour remettre à 0">X</span>
+              <input type="number" id="framelineOffsetX" min="-50" max="50" value="0" step="0.5" style="width:62px;" />
+              <span id="lblOffsetY" style="font-size:11px;color:#999;cursor:default;" title="Double-clic pour remettre à 0">Y</span>
+              <input type="number" id="framelineOffsetY" min="-50" max="50" value="0" step="0.5" style="width:62px;" />
+              <span style="font-size:11px;color:#999">%</span>
+            </div>
+          </div>
+
         </div>
 
 
@@ -451,6 +472,10 @@
     .sliderInline input[type="range"]{
       width:100%;
     }
+    /* Fixed-width inputs inside the frameline row */
+    #openGateSafety   { width:68px !important; }
+    #framelineOffsetX,
+    #framelineOffsetY { width:62px !important; }
     .tokenControls.hidden{
       display:none;
     }
