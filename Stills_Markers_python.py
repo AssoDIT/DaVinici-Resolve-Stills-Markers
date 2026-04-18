@@ -785,7 +785,6 @@ dict_settings = {
     "format": "jpg",
     "resize_stills": False,
     "resize_percentage": 50,
-    "replace_original_exports": True,
     "rename_with_meta": False,
     "restrict_to_in_out": True,
     "remove_drx": True,
@@ -795,9 +794,11 @@ dict_settings = {
     "open_gate_crop": False,
     "compress": False,
     "compress_mode": "none",
+    "marker_source": "timeline",
     "export_edl_markers": False,
     "rename_timeline_markers": False,
     "move_markers_to_clips": False,
+    "move_markers_to_timeline": False,
     "rename_format_style": "US",
     "rename_fallback_shot_from_scene": True,
     "rename_scene_shot_separator": "/",
@@ -1844,7 +1845,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     browse_buttonID = "BrowseButton"
     export_edl_markers_check_boxID = "ExportEdlMarkersCheckBox"
     rename_timeline_markers_check_boxID = "RenameTimelineMarkersCheckBox"
-    move_markers_to_clips_check_boxID = "MoveMarkersToClipsCheckBox"
+    move_markers_to_clips_check_boxID    = "MoveMarkersToClipsCheckBox"
+    move_markers_to_timeline_check_boxID = "MoveMarkersToTimelineCheckBox"
 
     restrict_to_in_out_check_boxID = "RestrictToInOutCheckBox"
 
@@ -1864,7 +1866,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     resize_check_boxID = "ResizeCheckBox"
     resize_line_editID = "ResizeLineEdit"
-    resize_replace_check_boxID = "ResizeReplaceCheckBox"
 
     burnin_setting_boxID = "BurninSettings"
     burnin_check_boxID = "BurninCheckBox"
@@ -1919,11 +1920,11 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             "WindowTitle": win_name,
             "WindowFlags": window_flags,
             "WindowModality": "ApplicationModal",
-            "FixedSize": [600, 450],
+            "FixedSize": [638, 450],
             "Events": {"Close": True, "KeyPress": True},
         },
         ui.VGroup(
-            {"MinimumSize": [600, 450], "MaximumSize": [600, 450], "Weight": 1},
+            {"MinimumSize": [638, 450], "MaximumSize": [638, 450], "Weight": 1},
             [
                 ui.HGroup({"Weight": 1, "Spacing": 0}, [
                     ui.HGap(14),
@@ -2083,6 +2084,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": move_markers_to_timeline_check_boxID,
+                                        "Text": "Move markers to timeline",
+                                        "Checked": settings.get("move_markers_to_timeline", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
                             ],
                         ),
                         ui.VGap(2),
@@ -2202,15 +2212,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                             }
                                         ),
                                         ui.Label({"Weight": 0, "Text": "%"}),
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": resize_replace_check_boxID,
-                                                "Text": "Replace originals",
-                                                "Checked": settings["replace_original_exports"],
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
@@ -2353,7 +2354,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         resize_on = window_items[resize_check_boxID].Checked
         window_items[resize_check_boxID].Enabled = export_on
         window_items[resize_line_editID].Enabled = export_on and resize_on
-        window_items[resize_replace_check_boxID].Enabled = export_on
 
         window_items[remove_drx_check_boxID].Enabled = export_on
 
@@ -2367,6 +2367,10 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[compress_combo_boxID].Enabled = compress_enabled
 
         window_items[open_dest_check_boxID].Enabled = export_on
+
+        # Move-marker actions: disable when the source doesn't have markers to move
+        window_items[move_markers_to_clips_check_boxID].Enabled    = (_source != "clip")
+        window_items[move_markers_to_timeline_check_boxID].Enabled = (_source != "timeline")
 
         rename_on = window_items[rename_with_meta_check_boxID].Checked
         window_items[rename_options_groupID].Enabled = rename_on
@@ -2456,7 +2460,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["format"] = stills["formats"]["sort_order"][window_items[format_combo_boxID].CurrentIndex]
         settings["export_edl_markers"] = window_items[export_edl_markers_check_boxID].Checked
         settings["rename_timeline_markers"] = window_items[rename_timeline_markers_check_boxID].Checked
-        settings["move_markers_to_clips"] = window_items[move_markers_to_clips_check_boxID].Checked
+        settings["move_markers_to_clips"]    = window_items[move_markers_to_clips_check_boxID].Checked
+        settings["move_markers_to_timeline"] = window_items[move_markers_to_timeline_check_boxID].Checked
 
         settings["restrict_to_in_out"] = window_items[restrict_to_in_out_check_boxID].Checked
 
@@ -2472,7 +2477,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         settings["resize_stills"] = window_items[resize_check_boxID].Checked
         settings["resize_percentage"] = window_items[resize_line_editID].Text
-        settings["replace_original_exports"] = window_items[resize_replace_check_boxID].Checked
 
         settings["compress_mode"] = _COMPRESS_MODE_MAP.get(
             window_items[compress_combo_boxID].CurrentText, "none"
@@ -2509,7 +2513,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[export_to_line_editID].TextChanged = OnGenericToggled
 
     main_window.On[rename_timeline_markers_check_boxID].Toggled = OnGenericToggled
-    main_window.On[move_markers_to_clips_check_boxID].Toggled = OnGenericToggled
+    main_window.On[move_markers_to_clips_check_boxID].Toggled    = OnGenericToggled
+    main_window.On[move_markers_to_timeline_check_boxID].Toggled = OnGenericToggled
     main_window.On[remove_drx_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_timeline_folder_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_sub_folder_check_boxID].Toggled = OnGenericToggled
@@ -2517,7 +2522,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     main_window.On[resize_check_boxID].Toggled = OnGenericToggled
     main_window.On[resize_line_editID].TextChanged = OnGenericToggled
-    main_window.On[resize_replace_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[format_combo_boxID].CurrentIndexChanged = OnFormatComboBoxCurrentIndexChanged
     main_window.On[compress_combo_boxID].CurrentIndexChanged = OnGenericToggled
@@ -2698,6 +2702,8 @@ all_exported_files  = []
 metadata_json       = {}
 metadata_by_frame   = {}
 _still_naming       = ""
+_edl_markers        = None
+_edl_path           = None
 
 if grab_stills:
     marker_frames = sorted(markers_src.keys())
@@ -2865,7 +2871,7 @@ if grab_stills:
                 ))
 
         # Collect clip marker task (executed post-loop on Edit page)
-        if settings.get("move_markers_to_clips", False):
+        if settings.get("move_markers_to_clips", False) and _src != "clip":
             _cm_item = timeline.GetCurrentVideoItem()
             if _cm_item:
                 _cm_mpi = _cm_item.GetMediaPoolItem()
@@ -3119,6 +3125,88 @@ if _pending_clip_markers:
                 )
     change_page("color")
 
+# --- MOVE MARKERS TO TIMELINE (inverse of move_to_clips) ---
+# Reads every clip marker on every TimelineItem of every video track,
+# creates the corresponding timeline marker, then deletes the clip marker.
+# Deletion strategy (per color per item):
+#   1. DeleteMarkerAtFrameNum if available
+#   2. Otherwise: DeleteMarkersByColor + re-add only the markers NOT being moved
+_mtt_src = settings.get("marker_source", "timeline")
+if settings.get("move_markers_to_timeline", False) and _mtt_src != "timeline":
+    change_page("edit")
+    _restrict_mtt  = settings.get("restrict_to_in_out", False)
+    _mtt_tl_start  = int(timeline_start)
+    _tl_in_fr      = int(markIn_frame)
+    _tl_out_fr     = int(markOut_frame)
+    _moved_count   = 0
+    _skipped_count = 0
+    for _mtt_track in range(1, timeline.GetTrackCount("video") + 1):
+        for _mtt_item in (timeline.GetItemListInTrack("video", _mtt_track) or []):
+            _mtt_clip_markers = _mtt_item.GetMarkers() or {}
+            if not _mtt_clip_markers:
+                continue
+            _mtt_item_start = int(_mtt_item.GetStart()) if hasattr(_mtt_item, "GetStart") else 0
+
+            # Partition markers into: to_move (in-range) and to_keep (out-of-range)
+            _mtt_to_move = {}   # clip_fr -> info
+            _mtt_to_keep = {}   # clip_fr -> info  (out-of-range, left on clip)
+            for _mtt_clip_fr, _mtt_info in _mtt_clip_markers.items():
+                _mtt_tl_fr  = int(_mtt_clip_fr) + _mtt_item_start - _mtt_tl_start
+                _mtt_abs_fr = _mtt_tl_start + _mtt_tl_fr
+                if _restrict_mtt and not (_tl_in_fr <= _mtt_abs_fr <= _tl_out_fr):
+                    _mtt_to_keep[_mtt_clip_fr] = _mtt_info
+                    _skipped_count += 1
+                else:
+                    _mtt_to_move[_mtt_clip_fr] = _mtt_info
+
+            if not _mtt_to_move:
+                continue
+
+            # Step 1 — add timeline markers for every marker being moved
+            _mtt_existing_tl = timeline.GetMarkers() or {}
+            for _mtt_clip_fr, _mtt_info in _mtt_to_move.items():
+                _mtt_tl_fr = int(_mtt_clip_fr) + _mtt_item_start - _mtt_tl_start
+                if _mtt_tl_fr not in _mtt_existing_tl:
+                    timeline.AddMarker(
+                        _mtt_tl_fr,
+                        _mtt_info.get("color", "Blue"),
+                        _mtt_info.get("name", ""),
+                        _mtt_info.get("note", ""),
+                        int(_mtt_info.get("duration", 1)),
+                        _mtt_info.get("customData", ""),
+                    )
+
+            # Step 2 — delete moved markers from the clip
+            _mtt_del_fn = getattr(_mtt_item, "DeleteMarkerAtFrameNum", None)
+            if callable(_mtt_del_fn):
+                # Per-frame delete available
+                for _mtt_clip_fr in _mtt_to_move:
+                    try:
+                        _mtt_del_fn(int(_mtt_clip_fr))
+                        _moved_count += 1
+                    except Exception as _mtt_e:
+                        print(f"[move_to_timeline] DeleteMarkerAtFrameNum failed at frame {_mtt_clip_fr}: {_mtt_e}")
+            else:
+                # Fallback: delete by color, re-add only the to_keep markers of that color
+                _mtt_del_color_fn = getattr(_mtt_item, "DeleteMarkersByColor", None)
+                if callable(_mtt_del_color_fn):
+                    _mtt_colors_to_clear = {info.get("color", "Blue") for info in _mtt_to_move.values()}
+                    for _mtt_col in _mtt_colors_to_clear:
+                        _mtt_del_color_fn(_mtt_col)
+                        # Re-add out-of-range markers of this color that should stay on the clip
+                        for _kr, _ki in _mtt_to_keep.items():
+                            if _ki.get("color") == _mtt_col:
+                                _mtt_item.AddMarker(int(_kr), _ki.get("color", "Blue"),
+                                                    _ki.get("name", ""), _ki.get("note", ""),
+                                                    int(_ki.get("duration", 1)), _ki.get("customData", ""))
+                    _moved_count += len(_mtt_to_move)
+                else:
+                    print(f"[move_to_timeline] no delete method on item — markers not removed from clip")
+
+    print(f"[move_to_timeline] moved {_moved_count} marker(s) to timeline"
+          + (f", skipped {_skipped_count} out-of-range" if _skipped_count else ""))
+    change_page("color")
+
 # --- EDL EXPORT (post-grab, uses fully populated metadata_by_frame) ---
 if settings.get("export_edl_markers", False) and _edl_markers is not None and _edl_path:
     export_markers_to_edl(
@@ -3183,7 +3271,7 @@ if grab_stills and settings.get("export", False):
     delete_metadata_json(output_path, timeline.GetName(), export_to=settings.get("export_to"))
 
 # --- OPEN DESTINATION FOLDER IN FINDER ---
-if grab_stills and settings.get("open_destination_folder", False) and output_path and os.path.isdir(output_path):
+if grab_stills and settings.get("export", False) and settings.get("open_destination_folder", False) and output_path and os.path.isdir(output_path):
     try:
         subprocess.Popen(["open", output_path])
     except Exception as e:
