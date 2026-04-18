@@ -103,12 +103,14 @@ The plugin includes a web-based burn-in layout editor with:
 - Token search and favorites panel
 - Cinematic blanking preview
 - Safe guides preview
-- Open Gate Crop settings: native format preset, custom resolution, safety area %
+- Open Gate Crop settings: orientation (H 16:9 / V 9:16), native format preset, custom resolution, safety area %, X/Y offset
+- Frameline overlay: canvas dims outside the active frameline, border drawn in orange
 - Direct JSON save
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
 - Delete selected token (Delete / Backspace)
-- Move selected token with arrow keys (1% step)
+- Move selected token with arrow keys (0.1% step) — hold Shift for 1% step
+- Double-click on Frameline / X / Y labels to reset to default values
 
 Configuration file:
 
@@ -342,7 +344,7 @@ Mask opacity is respected during export.
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
 - Delete selected token (Delete / Backspace)
-- Move selected token with arrow keys (0.1% step)
+- Move selected token with arrow keys (0.1% step) — hold Shift for 1% step
 - Export burn-in preset as Resolve XML
 - Import/browse existing Resolve presets
 - Push preset directly into Resolve's SlatePresetList.xml
@@ -351,17 +353,21 @@ Mask opacity is respected during export.
 - Restrict grab between In/Out
 - Marker-based EDL export
 - Optional ImageOptim compression (JPEG + PNG)
-- Open Gate Crop with safety area and native format presets (Arri, Sony Venice)
+- Open Gate Crop: horizontal 16:9 (upscale to 1920×1080) or vertical 9:16 (side crop, no upscale), with safety area and native format presets (Arri, Sony Venice)
 - Open destination folder in Finder after export
 
 ---
 
 ## Open Gate Crop
 
-Designed for cameras that shoot in an open-gate (native sensor) format wider than the delivery ratio. When enabled, the plugin extracts the 16:9 delivery area from the exported still and upscales it to 1920×1080 before applying burn-ins.
+Designed for cameras that shoot in an open-gate (native sensor) format. The orientation is set in the Burn-In Web Editor and determines how the still is processed.
+
+### Horizontal 16:9 (default)
+
+Extracts the 16:9 delivery area from a wider sensor still and upscales it to 1920×1080 before applying burn-ins.
 
 Two cases are handled automatically:
-- **Timeline export (pillarboxed)**: the 3:2 (or wider) content is centered in a 16:9 frame — the plugin detects the content width, crops the 16:9 centre, and upscales
+- **Timeline export (pillarboxed)**: the 3:2 (or wider) content is centred in a 16:9 frame — the plugin detects the content width, crops the 16:9 centre, and upscales
 - **Full sensor export**: the native ratio is wider than 16:9 — the plugin crops the 16:9 centre vertically and upscales
 
 **Supported presets:**
@@ -377,6 +383,14 @@ Two cases are handled automatically:
 **Safety Area**: additional symmetric inset applied before upscale (e.g. 95% crops 2.5% on each side).
 
 Burn-in text size is always computed at 1920px reference width — resize percentage scales the final image proportionally.
+
+### Vertical 9:16
+
+Crops the centre 9:16 area from a 16:9 still. No upscale — the output image has the dimensions of the crop. Burn-ins fill the full cropped frame (no cinematic blanking applied). The Native Format preset is not used in this mode.
+
+**Safety Area**: symmetric inset applied to the crop area (e.g. 95% reduces width and height by 5% symmetrically before cropping).
+
+**X/Y Offset**: shifts the crop window relative to the image centre (% of image dimensions), allowing off-centre vertical framing.
 
 ---
 

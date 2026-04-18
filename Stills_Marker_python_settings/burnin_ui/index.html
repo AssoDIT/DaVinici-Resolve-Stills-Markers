@@ -288,6 +288,7 @@
         <li>Click an element on the canvas to select it and show its properties.</li>
         <li>Drag it on the canvas to reposition.</li>
         <li>Use Position X / Y sliders for precise placement (0–100%).</li>
+        <li>Arrow keys move the selected token by <strong>0.1%</strong> — hold <strong>Shift</strong> for 1% steps.</li>
         <li><strong>Right-click</strong> an element in the layout list to delete it.</li>
         <li>Click <strong>Reset</strong> to remove all elements at once.</li>
       </ul>
@@ -327,13 +328,29 @@
         Expand a preset to see its elements, then click <strong>Import into layout</strong> to load it.
       </p>
 
-      <h3>7. Keyboard Shortcuts</h3>
+      <h3>7. Open Gate Crop &amp; Frameline</h3>
+      <p>
+        The <strong>Frameline</strong> checkbox (OGC row) overlays a crop guide on the canvas.
+        When enabled in the Resolve plugin, the still is cropped accordingly before burn-ins are applied.
+      </p>
+      <ul>
+        <li><strong>H 16:9</strong> — extracts the 16:9 delivery area from the native sensor frame and upscales to 1920×1080. Use with a Native Format preset (Arri, Sony Venice) or Custom.</li>
+        <li><strong>V 9:16</strong> — crops the centre 9:16 area from the 16:9 still (sides trimmed, no upscale). Burn-ins fill the full cropped frame. Native Format preset is ignored in this mode.</li>
+        <li><strong>Safety %</strong> — symmetric inset applied to the crop area before export.</li>
+        <li><strong>Offset X / Y</strong> — shifts the frameline relative to the image centre (% of image size). Double-click the <strong>X</strong> or <strong>Y</strong> label to reset to 0. Double-click <strong>Frameline</strong> to reset safety to 100%.</li>
+      </ul>
+      <p>
+        Outside the active frameline, the canvas is dimmed to show what will be cropped out. The frameline border is drawn in orange for both orientations.
+      </p>
+
+      <h3>8. Keyboard Shortcuts</h3>
       <ul>
         <li><strong>Cmd/Ctrl + S</strong> → Save JSON.</li>
         <li><strong>Cmd/Ctrl + Z</strong> → Undo last action.</li>
         <li><strong>Cmd/Ctrl + Y</strong> → Redo.</li>
         <li><strong>Delete / Backspace</strong> → Delete the selected token.</li>
-        <li><strong>← → ↑ ↓</strong> → Move the selected token (step 1%).</li>
+        <li><strong>← → ↑ ↓</strong> → Move the selected token by 0.1%.</li>
+        <li><strong>Shift + ← → ↑ ↓</strong> → Move the selected token by 1%.</li>
         <li><strong>Escape</strong> → Close any open overlay.</li>
       </ul>
     </div>
