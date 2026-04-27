@@ -228,19 +228,8 @@ def delete_metadata_json(output_path, timeline_name, export_to=None):
     """
     safe_name = timeline_name.replace(" ", "_")
 
-    for base, suffix in [
-        (output_path, "_stills_metadata.json"),
-        (export_to or output_path, "_stills_full_metadata.json"),
-    ]:
-        try:
-            if not base:
-                continue
-            json_path = os.path.join(base, f"{safe_name}{suffix}")
-            if os.path.exists(json_path):
-                os.remove(json_path)
-                print(f"Metadata JSON removed: {json_path}")
-        except Exception as e:
-            print(f"Could not remove metadata JSON: {e}")
+    # Les fichiers metadata sont désormais préfixés "." (masqués) — suppression désactivée.
+    pass
 
 
 # --------------------------------------------------------------------------
@@ -804,7 +793,8 @@ dict_settings = {
     "rename_scene_shot_separator": "/",
     "burnin": False,
     "fit_to_1920_canvas": False,
-    "open_destination_folder": False
+    "open_destination_folder": False,
+    "replace_stills": False
 }
 
 
@@ -1875,6 +1865,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     compress_setting_boxID = "CompressSettings"
     compress_combo_boxID = "CompressComboBox"
     open_dest_check_boxID = "OpenDestCheckBox"
+    replace_stills_check_boxID = "ReplaceStillsCheckBox"
 
     _COMPRESS_MODES = ["No compression", "ImageOptim (background)", "ImageOptim (app)"]
     _COMPRESS_MODE_MAP = {
@@ -2275,6 +2266,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
+                                        "ID": replace_stills_check_boxID,
+                                        "Text": "Replace stills",
+                                        "Checked": settings.get("replace_stills", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
                                         "ID": open_dest_check_boxID,
                                         "Text": "Open destination folder",
                                         "Checked": settings.get("open_destination_folder", False),
@@ -2367,6 +2367,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         window_items[compress_combo_boxID].Enabled = compress_enabled
 
         window_items[open_dest_check_boxID].Enabled = export_on
+        window_items[replace_stills_check_boxID].Enabled = export_on
 
         # Move-marker actions: disable when the source doesn't have markers to move
         window_items[move_markers_to_clips_check_boxID].Enabled    = (_source != "clip")
@@ -2485,6 +2486,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["fit_to_1920_canvas"] = window_items[fit_canvas_check_boxID].Checked
         settings["open_gate_crop"] = window_items[open_gate_crop_check_boxID].Checked
         settings["open_destination_folder"] = window_items[open_dest_check_boxID].Checked
+        settings["replace_stills"] = window_items[replace_stills_check_boxID].Checked
 
         save_settings_to_json(settings)
         dispatcher.ExitLoop(True)
@@ -2529,6 +2531,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[fit_canvas_check_boxID].Toggled = OnGenericToggled
     main_window.On[open_gate_crop_check_boxID].Toggled = OnGenericToggled
     main_window.On[open_dest_check_boxID].Toggled = OnGenericToggled
+    main_window.On[replace_stills_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[cancel_buttonID].Clicked = OnCancelButtonClicked
     main_window.On[start_buttonID].Clicked = OnStartButtonClicked
@@ -2776,17 +2779,6 @@ if grab_stills:
         meta_block["exported_filename"] = None
         metadata_by_frame[str(marker_offset_frame)] = meta_block
 
-        if settings.get("export", False):
-            try:
-                json_tmp_path = os.path.join(
-                    settings.get("export_to", ""),
-                    f"{timeline.GetName()}_stills_full_metadata.json".replace(" ", "_")
-                )
-                with open(json_tmp_path, "w", encoding="utf-8") as jf:
-                    json.dump(metadata_json, jf, indent=4)
-            except:
-                pass
-
         # processed_count += 1
         # if total_markers > 0:
         #     percent = int((processed_count / total_markers) * 100)
@@ -2981,8 +2973,8 @@ if grab_stills:
                         if new_stem:
                             ext = os.path.splitext(img_path)[1]
                             new_path = os.path.join(os.path.dirname(img_path), new_stem + ext)
-                            # Avoid collision: append counter if name already exists
-                            if new_path != img_path and os.path.exists(new_path):
+                            # Collision: overwrite if replace_stills, sinon suffixe _1, _2…
+                            if new_path != img_path and os.path.exists(new_path) and not settings.get("replace_stills", False):
                                 base_stem = new_stem
                                 counter = 1
                                 while os.path.exists(new_path):
@@ -3223,14 +3215,37 @@ if grab_stills and output_path:
     try:
         metadata_json_path = os.path.join(
             output_path,
-            f"{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
+            f".{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
         )
         with open(metadata_json_path, "w", encoding="utf-8") as jf:
             json.dump(metadata_json, jf, indent=4)
     except Exception as e:
         print(f"Could not write metadata JSON: {e}")
 
-# --- IMAGEOPTIM COMPRESSION ---
+# --- WRITE TIMELINE CLIPS JSON ---
+if grab_stills and output_path:
+    try:
+        clips_data = []
+        for item in (timeline.GetItemListInTrack("video", 1) or []):
+            mpi = item.GetMediaPoolItem() if hasattr(item, "GetMediaPoolItem") else None
+            clips_data.append({
+                "clip_name":       item.GetName(),
+                "start_frame":     item.GetStart(),
+                "end_frame":       item.GetEnd(),
+                "duration":        item.GetDuration(),
+                "left_offset":     item.GetLeftOffset() if hasattr(item, "GetLeftOffset") else None,
+                "metadata":        mpi.GetMetadata()      if mpi else {},
+                "clip_properties": mpi.GetClipProperty()  if mpi else {},
+            })
+        clips_json_path = os.path.join(
+            output_path,
+            f".{timeline.GetName()}_clips.json".replace(" ", "_")
+        )
+        with open(clips_json_path, "w", encoding="utf-8") as jf:
+            json.dump({"timeline": timeline.GetName(), "clips": clips_data}, jf, indent=4)
+    except Exception as e:
+        print(f"Could not write clips JSON: {e}")
+
 # --- IMAGEOPTIM COMPRESSION ---
 _compress_mode = settings.get("compress_mode")
 if _compress_mode is None:

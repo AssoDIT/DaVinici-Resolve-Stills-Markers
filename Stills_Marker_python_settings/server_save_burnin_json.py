@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_DIR = BASE_DIR  # Stills_Marker_python_settings
-JSON_PATH = os.path.join(SETTINGS_DIR, "burnin_web_settings.json")
+JSON_PATH = os.path.join(SETTINGS_DIR, ".burnin_web_settings.json")
 
 def _find_xml_path():
     candidates = [
@@ -733,7 +733,7 @@ def send_preset_to_resolve(preset_name: str) -> None:
 
     for existing in list(preset_list.findall("Element")):
         if (existing.findtext("DbKey") or "").strip() == preset_name:
-            preset_list.remove(existing)
+            preset_list.remove(existing)  # suppression du preset existant avant réécriture (évite les doublons)
 
     new_el = ET.SubElement(preset_list, "Element")
     ET.SubElement(new_el, "DbKey").text = preset_name
@@ -1025,7 +1025,7 @@ class Handler(BaseHTTPRequestHandler):
                 tmp_path = JSON_PATH + ".tmp"
                 with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, JSON_PATH)
+                os.replace(tmp_path, JSON_PATH)  # écrasement atomique : l'ancien JSON est supprimé
 
                 self._send(200, {"ok": True, "path": JSON_PATH})
             except Exception as e:
