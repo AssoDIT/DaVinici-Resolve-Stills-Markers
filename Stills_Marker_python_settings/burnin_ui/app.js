@@ -826,18 +826,24 @@ function bindInputs(){
     });
   }
 
-  els.imgPicker.addEventListener("change", (ev) => {
-    const file = ev.target.files && ev.target.files[0];
-    if(!file) return;
+  function loadImageFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const fileNameEl = document.getElementById("imgFileName");
+    if (fileNameEl) fileNameEl.textContent = file.name;
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => {
-      bgImage = img;
-      render();
-      URL.revokeObjectURL(url);
-    };
+    img.onload = () => { bgImage = img; render(); URL.revokeObjectURL(url); };
     img.src = url;
+  }
+
+  els.imgPicker.addEventListener("change", (ev) => {
+    loadImageFile(ev.target.files && ev.target.files[0]);
   });
+
+  const previewWrap = els.canvas.parentElement;
+  previewWrap.addEventListener("dragover", (ev) => { ev.preventDefault(); previewWrap.classList.add("drag-over"); });
+  previewWrap.addEventListener("dragleave", () => { previewWrap.classList.remove("drag-over"); });
+  previewWrap.addEventListener("drop", (ev) => { ev.preventDefault(); previewWrap.classList.remove("drag-over"); loadImageFile(ev.dataTransfer.files[0]); });
 
   if(els.imageRatio){
     els.imageRatio.addEventListener("change", ()=>{
@@ -1594,6 +1600,9 @@ function renderLayoutList(){
 }
 
 function render(){
+  ctx.globalAlpha = 1.0;
+  ctx.setLineDash([]);
+
   const W = els.canvas.width;
   const H = els.canvas.height;
 
@@ -1612,9 +1621,9 @@ function render(){
     const oy = ((state.frameline_offset_y || 0) / 100) * H;
 
     if(state.frameline_orientation === "vertical_9_16"){
-      const _sf = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
-      const _vw = H * (9 / 16) * _sf;
-      const _vh = H * _sf;
+      const _sf = Math.max(0.5, (state.open_gate_safety ?? 100) / 100);
+      const _vw = Math.min(H * (9 / 16) * _sf, W);
+      const _vh = Math.min(H * _sf, H);
       fl = {
         x: clamp((W - _vw) / 2 + ox, 0, W - _vw),
         y: clamp((H - _vh) / 2 + oy, 0, H - _vh),
@@ -1622,7 +1631,7 @@ function render(){
       };
     } else {
       const _nr = getOGCNativeRatio();
-      const _sf = Math.max(0.5, Math.min(1.0, (state.open_gate_safety ?? 100) / 100));
+      const _sf = Math.max(0.5, (state.open_gate_safety ?? 100) / 100);
       const _cw = H * _nr;
       const _fw = Math.min(_cw * _sf, W);
       const _fh = Math.min((_cw / (16 / 9)) * _sf, H);
@@ -1857,7 +1866,7 @@ function render(){
     } else {
       const safetyPct = Math.round(state.open_gate_safety ?? 100);
       const preset    = state.open_gate_crop_preset || "arri_alexa35";
-      flLabel = `OGC ${preset.replace(/_/g," ")}${safetyPct < 100 ? " · " + safetyPct + "%" : ""}`;
+      flLabel = `OGC ${preset.replace(/_/g," ")}${safetyPct !== 100 ? " · " + safetyPct + "%" : ""}`;
     }
 
     ctx.font         = "bold 11px Arial";

@@ -156,6 +156,11 @@ button:hover{
   align-items:center;
   justify-content:center;
   overflow:hidden;
+  transition: border-color .15s, box-shadow .15s;
+}
+.previewWrap.drag-over{
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 #previewCanvas{

@@ -42,8 +42,9 @@
 
         <section class="panel middle" style="flex:1;min-height:0;">
           <h2>Preview</h2>
-        <div class="row">
-          <input id="imgPicker" type="file" accept="image/*" />
+        <div class="row" style="display:flex;align-items:center;gap:8px;">
+          <input id="imgPicker" type="file" accept="image/*" style="flex-shrink:0;" />
+          <span id="imgFileName" style="font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
         </div>
         <div class="previewWrap">
           <canvas id="previewCanvas" width="1280" height="720"></canvas>
@@ -99,7 +100,7 @@
             <label id="lblFramelineSafety" style="cursor:default;" title="Double-clic pour remettre à 100%">Frameline</label>
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="checkbox" id="ogcFramelineToggle" style="width:14px;height:14px;flex-shrink:0;" />
-              <input type="number" id="openGateSafety" min="50" max="100" value="100" step="0.5" style="width:68px;flex-shrink:0;" />
+              <input type="number" id="openGateSafety" min="50" max="200" value="100" step="0.5" style="width:68px;flex-shrink:0;" />
               <span style="font-size:11px;color:#999">%</span>
             </div>
           </div>
@@ -118,10 +119,10 @@
             <label>Native Format</label>
             <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:nowrap;">
               <select id="openGateCropPreset" style="flex:1;min-width:0;">
-                <option value="arri_alexa35">Arri Alexa35 4.6K OG</option>
-                <option value="arri_alexalf">Arri AlexaLF 4.5K OG</option>
-                <option value="sony_venice1">Sony Venice1 6K 3:2</option>
-                <option value="sony_venice2">Sony Venice2 8.6K 3:2</option>
+                <option value="arri_alexa35">Arri Alexa 35 4.6K OG</option>
+                <option value="arri_alexalf">Arri Alexa LF 4.5K OG</option>
+                <option value="sony_venice1">Sony Venice 1 6K 3:2</option>
+                <option value="sony_venice2">Sony Venice 2 8.6K 3:2</option>
                 <option value="custom">Custom</option>
               </select>
               <div id="openGateCropCustomWrap" style="display:none;flex-direction:row;align-items:center;gap:4px;">
