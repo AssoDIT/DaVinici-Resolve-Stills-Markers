@@ -51,6 +51,7 @@ const els = {
   metaBgOpacity: document.getElementById("metaBgOpacity"),
   metaBgOpacityVal: document.getElementById("metaBgOpacityVal"),
   imageRatio: document.getElementById("imageRatio"),
+  imageRatioCustom: document.getElementById("imageRatioCustom"),
   maskOpacityVal: document.getElementById("maskOpacityVal"),
 };
 
@@ -63,6 +64,8 @@ let state = {
   burnin_font_family: "Arial",
   elements: [],
   image_ratio: 1.77,
+  image_ratio_select: "1.77", // "none" | "custom" | numeric string
+  image_ratio_custom: 1.5,
   image_ratio_mode: "crop", // "crop" | "fit"
   mask_style: "bars",       // "bars" | "lines" | "bars_lines"
   mask_opacity: 1.0,
@@ -845,12 +848,53 @@ function bindInputs(){
   previewWrap.addEventListener("dragleave", () => { previewWrap.classList.remove("drag-over"); });
   previewWrap.addEventListener("drop", (ev) => { ev.preventDefault(); previewWrap.classList.remove("drag-over"); loadImageFile(ev.dataTransfer.files[0]); });
 
+  const ratioWrap = document.getElementById("ratioSelectWrap");
+
+  function setCustomRatioActive(active){
+    if(!ratioWrap) return;
+    if(active){
+      ratioWrap.classList.add("custom-active");
+      if(els.imageRatioCustom) els.imageRatioCustom.style.display = "";
+    } else {
+      ratioWrap.classList.remove("custom-active");
+      if(els.imageRatioCustom) els.imageRatioCustom.style.display = "none";
+    }
+  }
+
   if(els.imageRatio){
     els.imageRatio.addEventListener("change", ()=>{
-      state.image_ratio = parseFloat(els.imageRatio.value) || 1.77;
+      const v = els.imageRatio.value;
+      state.image_ratio_select = v;
+      if(v === "none"){
+        state.image_ratio = null;
+        setCustomRatioActive(false);
+      } else if(v === "custom"){
+        state.image_ratio = state.image_ratio_custom || 1.5;
+        setCustomRatioActive(true);
+        if(els.imageRatioCustom){
+          els.imageRatioCustom.value = state.image_ratio_custom || "";
+          els.imageRatioCustom.focus();
+          els.imageRatioCustom.select();
+        }
+      } else {
+        state.image_ratio = parseFloat(v) || 1.77;
+        setCustomRatioActive(false);
+      }
       updateCanvasRatio();
       render();
       scheduleSave();
+    });
+  }
+
+  if(els.imageRatioCustom){
+    els.imageRatioCustom.addEventListener("input", () => {
+      const v = parseFloat(els.imageRatioCustom.value);
+      if(v > 0){
+        state.image_ratio = v;
+        state.image_ratio_custom = v;
+        render();
+        scheduleSave();
+      }
     });
   }
 
@@ -1612,7 +1656,8 @@ function render(){
 
   // --- Intelligent crop / fit simulation ---
   const canvasRatio = W / H;
-  const targetRatio = state.image_ratio || 1.77;
+  const noRatio = state.image_ratio_select === "none" || state.image_ratio === null;
+  const targetRatio = noRatio ? null : (state.image_ratio || 1.77);
 
   // Pre-compute frameline rect (OGC horizontal or vertical 9:16) with optional X/Y offset
   let fl = null;
@@ -1622,22 +1667,32 @@ function render(){
 
     if(state.frameline_orientation === "vertical_9_16"){
       const _sf = Math.max(0.5, (state.open_gate_safety ?? 100) / 100);
-      const _vw = Math.min(H * (9 / 16) * _sf, W);
-      const _vh = Math.min(H * _sf, H);
+      const _vw = H * (9 / 16) * _sf;
+      const _vh = H * _sf;
       fl = {
-        x: clamp((W - _vw) / 2 + ox, 0, W - _vw),
-        y: clamp((H - _vh) / 2 + oy, 0, H - _vh),
+        x: (W - _vw) / 2 + ox,
+        y: (H - _vh) / 2 + oy,
         w: _vw, h: _vh, type: "vertical_9_16"
+      };
+    } else if(state.frameline_orientation === "native_ratio"){
+      const _sf = Math.max(0.5, (state.open_gate_safety ?? 100) / 100);
+      const _nr = getOGCNativeRatio();
+      const _fh = H * _sf;
+      const _fw = _fh * _nr;
+      fl = {
+        x: (W - _fw) / 2 + ox,
+        y: (H - _fh) / 2 + oy,
+        w: _fw, h: _fh, type: "native_ratio"
       };
     } else {
       const _nr = getOGCNativeRatio();
       const _sf = Math.max(0.5, (state.open_gate_safety ?? 100) / 100);
       const _cw = H * _nr;
-      const _fw = Math.min(_cw * _sf, W);
-      const _fh = Math.min((_cw / (16 / 9)) * _sf, H);
+      const _fw = _cw * _sf;
+      const _fh = (_cw / (16 / 9)) * _sf;
       fl = {
-        x: clamp((W - _fw) / 2 + ox, 0, W - _fw),
-        y: clamp((H - _fh) / 2 + oy, 0, H - _fh),
+        x: (W - _fw) / 2 + ox,
+        y: (H - _fh) / 2 + oy,
         w: _fw, h: _fh, type: "ogc"
       };
     }
@@ -1645,15 +1700,19 @@ function render(){
 
   activeFrameline = fl; // expose to drag handlers
 
-  if(state.image_ratio_mode === "fit"){
+  if(noRatio){
+
+    // --- NO RATIO MODE — full frame, no bars ---
+    if(bgImage){
+      drawCover(bgImage, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = "#0b0d12";
+      ctx.fillRect(0, 0, W, H);
+    }
+
+  } else if(state.image_ratio_mode === "fit"){
 
     // --- FIT MODE ---
-    // Base canvas is always 1.77 full frame.
-    // The image must be fully visible (contain).
-    // The selected ratio defines a centered transparent window.
-    // Everything outside that window is masked black.
-
-    // 1) Draw image fully visible (contain inside canvas)
     if(bgImage){
       drawContain(bgImage, 0, 0, W, H);
     } else {
@@ -1661,23 +1720,19 @@ function render(){
       ctx.fillRect(0,0,W,H);
     }
 
-    // 2) Compute target ratio window centered inside 1.77 canvas
     let cropX = 0;
     let cropY = 0;
     let cropW = W;
     let cropH = H;
 
     if(targetRatio > canvasRatio){
-      // Ratio wider → reduce height
       cropH = W / targetRatio;
       cropY = (H - cropH) / 2;
     } else {
-      // Ratio taller → reduce width
       cropW = H * targetRatio;
       cropX = (W - cropW) / 2;
     }
 
-    // When frameline is active, bars are drawn inside it — skip full-canvas bars
     if(!fl){
       const maskAlpha = clamp(state.mask_opacity ?? 1, 0, 1);
       ctx.save();
@@ -1706,9 +1761,7 @@ function render(){
 
   } else {
 
-    // --- CROP MODE (fill canvas, crop visually) ---
-    // Keep full canvas ratio but simulate cinematic bars (previous crop behavior)
-
+    // --- CROP MODE ---
     let cropX = 0;
     let cropY = 0;
     let cropW = W;
@@ -1763,7 +1816,9 @@ function render(){
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 14px Arial";
   ctx.textBaseline = "top";
-  const ratioLabel = `${state.image_ratio.toFixed(2)}:1`;
+  const ratioLabel = noRatio ? "No ratio"
+    : state.image_ratio_select === "custom" ? `Custom ${(state.image_ratio||1.77).toFixed(2)}:1`
+    : `${(state.image_ratio||1.77).toFixed(2)}:1`;
   const labelWidth = ctx.measureText(ratioLabel).width;
   const padding = 6;
 
@@ -1860,13 +1915,19 @@ function render(){
     ctx.setLineDash([8, 4]);
     ctx.strokeRect(fx, fy, fw, fh);
 
-    let flLabel;
+    const safetyPct = Math.round(state.open_gate_safety ?? 100);
+    const preset    = state.open_gate_crop_preset || "arri_alexa35";
+    const safeSfx   = safetyPct !== 100 ? ` · ${safetyPct}%` : "";
+    let flLabel, flColor;
     if(flType === "vertical_9_16"){
       flLabel = "9:16 Vertical";
+      flColor = "rgba(0,210,255,0.95)";
+    } else if(flType === "native_ratio"){
+      flLabel = `NR ${preset.replace(/_/g," ")}${safeSfx}`;
+      flColor = "rgba(0,220,140,0.95)";
     } else {
-      const safetyPct = Math.round(state.open_gate_safety ?? 100);
-      const preset    = state.open_gate_crop_preset || "arri_alexa35";
-      flLabel = `OGC ${preset.replace(/_/g," ")}${safetyPct !== 100 ? " · " + safetyPct + "%" : ""}`;
+      flLabel = `OGC ${preset.replace(/_/g," ")}${safeSfx}`;
+      flColor = "rgba(255,165,0,0.95)";
     }
 
     ctx.font         = "bold 11px Arial";
@@ -1874,7 +1935,7 @@ function render(){
     ctx.fillStyle    = "rgba(0,0,0,0.55)";
     const lw         = ctx.measureText(flLabel).width;
     ctx.fillRect(fx + 4, fy + 4, lw + 8, 16);
-    ctx.fillStyle    = flType === "vertical_9_16" ? "rgba(0,210,255,0.95)" : "rgba(255,165,0,0.95)";
+    ctx.fillStyle    = flColor;
     ctx.fillText(flLabel, fx + 8, fy + 19);
     ctx.restore();
   }
@@ -2063,8 +2124,22 @@ async function loadFromServer(){
       return el;
     });
 
-    if(state.image_ratio && els.imageRatio){
-      els.imageRatio.value = String(state.image_ratio);
+    // Restore ratio select / custom input
+    const sel = state.image_ratio_select || (state.image_ratio === 0 ? "none" : "1.77");
+    state.image_ratio_select = sel;
+    if(sel === "none"){
+      state.image_ratio = null;
+      if(els.imageRatio) els.imageRatio.value = "none";
+      setCustomRatioActive(false);
+    } else if(sel === "custom"){
+      state.image_ratio = state.image_ratio_custom || 1.5;
+      if(els.imageRatio) els.imageRatio.value = "custom";
+      if(els.imageRatioCustom) els.imageRatioCustom.value = state.image_ratio;
+      setCustomRatioActive(true);
+    } else {
+      state.image_ratio = parseFloat(sel) || state.image_ratio || 1.77;
+      if(els.imageRatio) els.imageRatio.value = sel;
+      setCustomRatioActive(false);
     }
 
     // Restore ratio mode select if present
@@ -2211,14 +2286,16 @@ async function saveToServer(){
       elements: normalizedElements,
 
       // Flat fields
-      image_ratio: Number(state.image_ratio ?? 1.77),
+      image_ratio: state.image_ratio_select === "none" ? 0 : Number(state.image_ratio ?? 1.77),
+      image_ratio_select: state.image_ratio_select || "1.77",
+      image_ratio_custom: Number(state.image_ratio_custom) || 1.5,
       image_ratio_mode: state.image_ratio_mode,
       mask_style: state.mask_style,
       mask_opacity: Number(state.mask_opacity ?? 1),
 
       // Explicit preview block (used by Python side)
       preview: {
-        ratio: Number(state.image_ratio ?? 1.77),
+        ratio: state.image_ratio_select === "none" ? 0 : Number(state.image_ratio ?? 1.77),
         mode: state.image_ratio_mode,
         mask_style: state.mask_style,
         mask_opacity: Number(state.mask_opacity ?? 1),

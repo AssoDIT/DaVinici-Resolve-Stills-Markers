@@ -590,11 +590,10 @@ def apply_open_gate_crop(img_path, native_w, native_h, safety=100.0):
         crop_w = min(crop_w, W)
         crop_h = min(crop_h, H)
 
-        # Apply safety area: tighten the crop symmetrically
-        safety_f = max(0.5, min(1.0, float(safety) / 100.0))
-        if safety_f < 1.0:
-            crop_w = int(round(crop_w * safety_f))
-            crop_h = int(round(crop_h * safety_f))
+        # Apply safety: <100% zooms in (tighter), >100% zooms out (wider)
+        safety_f = max(0.5, float(safety) / 100.0)
+        crop_w = min(int(round(crop_w * safety_f)), W)
+        crop_h = min(int(round(crop_h * safety_f)), H)
 
         x = (W - crop_w) // 2
         y = (H - crop_h) // 2
@@ -613,6 +612,49 @@ def apply_open_gate_crop(img_path, native_w, native_h, safety=100.0):
         print(f"Open gate crop applied: {os.path.basename(img_path)}")
     except Exception as e:
         print(f"Could not apply open gate crop: {e}")
+
+
+def apply_native_ratio_crop(img_path, native_w, native_h, safety=100.0):
+    """
+    Crop the image to the native camera ratio and resize to native-ratio HD.
+    Output: height=1080, width=round(1080 * native_ratio).
+    E.g. Venice 1 6K 3:2 → 1620×1080.
+    """
+    OUT_H = 1080
+    native_ratio = float(native_w) / float(native_h)
+    OUT_W = round(OUT_H * native_ratio)
+    try:
+        with Image.open(img_path) as img:
+            W, H = img.size
+            src = img.convert("RGB")
+
+        # Fit native-ratio rect centered on image (prefer full height)
+        content_h = H
+        content_w = int(round(H * native_ratio))
+        if content_w > W:
+            content_w = W
+            content_h = int(round(W / native_ratio))
+
+        safety_f = max(0.5, float(safety) / 100.0)
+        crop_w = min(int(round(content_w * safety_f)), W)
+        crop_h = min(int(round(content_h * safety_f)), H)
+
+        x = (W - crop_w) // 2
+        y = (H - crop_h) // 2
+
+        print(f"Native ratio crop: {W}x{H} → crop ({x},{y}) {crop_w}x{crop_h} "
+              f"safety={safety:.1f}% → {OUT_W}x{OUT_H}")
+
+        cropped = src.crop((x, y, x + crop_w, y + crop_h))
+        resized = cropped.resize((OUT_W, OUT_H), Image.LANCZOS)
+
+        ext = os.path.splitext(img_path)[1].lower()
+        if ext in (".jpg", ".jpeg"):
+            resized.save(img_path, quality=95)
+        else:
+            resized.save(img_path)
+    except Exception as e:
+        print(f"Could not apply native ratio crop: {e}")
 
     return img_path
 
@@ -1107,7 +1149,7 @@ _CUSTOM_TO_RESOLVE = {
 #   - opacity
 #   - align ("left" | "center" | "right")
 # ---------------------------------------------------------------------------
-def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None, vertical_crop=False):
+def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None, vertical_crop=False, native_ratio_crop=False):
     # Accept either {"elements":[...]} OR direct list format [...]
     if not burnin_cfg:
         return image_path
@@ -1132,17 +1174,18 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None, 
     preview_cfg = burnin_cfg.get("preview", {}) if isinstance(burnin_cfg, dict) else {}
 
     if vertical_crop:
-        # Image is already cropped to portrait — full frame is the reference
+        # Portrait image already cropped — full frame, no bars needed
         cropX, cropY, cropW, cropH = 0, 0, W, H
         mask_style = "none"
         mask_opacity = 1.0
     else:
+        # Normal path — also used for native_ratio_crop (image already at native
+        # dimensions, ratio/bars apply within that frame)
         try:
             ratio = float(preview_cfg.get("ratio", 1.77))
         except:
             ratio = 1.77
 
-        # Normalize mode and mask_style to avoid case / whitespace mismatches
         mode = str(preview_cfg.get("mode", "fit") or "fit").strip().lower()
         mask_style = str(preview_cfg.get("mask_style", "bars") or "bars").strip().lower()
 
@@ -1153,15 +1196,20 @@ def burnin_from_web_json(image_path, metadata_block, burnin_cfg, out_path=None, 
 
         mask_opacity = max(0.0, min(1.0, mask_opacity))
 
-        cropW = W
-        cropH = int(W / ratio)
+        if ratio <= 0:
+            # "None" ratio — full frame, no bars
+            cropX, cropY, cropW, cropH = 0, 0, W, H
+            mask_style = "none"
+        else:
+            cropW = W
+            cropH = int(W / ratio)
 
-        if cropH > H:
-            cropH = H
-            cropW = int(H * ratio)
+            if cropH > H:
+                cropH = H
+                cropW = int(H * ratio)
 
-        cropX = int((W - cropW) / 2)
-        cropY = int((H - cropH) / 2)
+            cropX = int((W - cropW) / 2)
+            cropY = int((H - cropH) / 2)
 
     # ------------------------------------------------------------
     # MASK DRAWING (black bars + optional white frame)
@@ -2222,18 +2270,18 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
-                                                "ID": fit_canvas_check_boxID,
-                                                "Text": "Fit to FHD canvas",
-                                                "Checked": settings.get("fit_to_1920_canvas", False),
+                                                "ID": open_gate_crop_check_boxID,
+                                                "Text": "Framelines Crop",
+                                                "Checked": settings.get("open_gate_crop", False),
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
-                                                "ID": open_gate_crop_check_boxID,
-                                                "Text": "Open Gate Crop",
-                                                "Checked": settings.get("open_gate_crop", False),
+                                                "ID": fit_canvas_check_boxID,
+                                                "Text": "Fit to FHD canvas",
+                                                "Checked": settings.get("fit_to_1920_canvas", False),
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
@@ -2735,15 +2783,20 @@ if grab_stills:
     _still_naming = str(_burnin_cfg.get("still_naming", "")).strip()
     _ogc_enabled = bool(settings.get("open_gate_crop", False))
     _frameline_orientation = str(_burnin_cfg.get("frameline_orientation", "horizontal_16_9"))
-    if _ogc_enabled:
-        _ogc_preset = _ogc.get("preset", "arri_alexa35")
-        if _ogc_preset == "custom":
-            _ogc_nw = int(_ogc.get("custom_w", 4608))
-            _ogc_nh = int(_ogc.get("custom_h", 3164))
-        else:
-            _ogc_nw, _ogc_nh = _OPEN_GATE_PRESETS.get(_ogc_preset, (4608, 3164))
-        _ogc_safety = float(_ogc.get("safety", 100.0))
-        print(f"Open Gate Crop enabled: orientation={_frameline_orientation}, "
+
+    # Always read native dimensions — needed for native_ratio orientation
+    # even when the OGC checkbox is off
+    _ogc_preset = _ogc.get("preset", "arri_alexa35")
+    if _ogc_preset == "custom":
+        _ogc_nw = int(_ogc.get("custom_w", 4608))
+        _ogc_nh = int(_ogc.get("custom_h", 3164))
+    else:
+        _ogc_nw, _ogc_nh = _OPEN_GATE_PRESETS.get(_ogc_preset, (4608, 3164))
+    _ogc_safety = float(_ogc.get("safety", 100.0))
+
+    _native_ratio_mode = (_ogc_enabled and _frameline_orientation == "native_ratio")
+    if _ogc_enabled or _native_ratio_mode:
+        print(f"OGC/NR: orientation={_frameline_orientation}, "
               f"preset={_ogc_preset} ({_ogc_nw}x{_ogc_nh}), safety={_ogc_safety}%")
 
     # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
@@ -2941,17 +2994,15 @@ if grab_stills:
                     _resize_pct = int(settings.get("resize_percentage", 50))
 
                     # OGC crop — orientation drives which function is called
-                    if _ogc_enabled:
+                    if _ogc_enabled or _native_ratio_mode:
                         if _frameline_orientation == "vertical_9_16":
                             apply_vertical_9_16_crop(img_path, safety=_ogc_safety)
+                        elif _native_ratio_mode:
+                            apply_native_ratio_crop(img_path, _ogc_nw, _ogc_nh, safety=_ogc_safety)
                         else:
                             apply_open_gate_crop(img_path, _ogc_nw, _ogc_nh, safety=_ogc_safety)
 
-                    # Fit HD canvas (skipped when OGC already produced 1920x1080)
-                    if settings.get("fit_to_1920_canvas", False) and not _ogc_enabled:
-                        fit_image_into_black_canvas(img_path, 1920, 1080)
-
-                    # Burnins applied at current size (1920 for OGC/fitHD, native otherwise)
+                    # Burnins applied on the cropped frame (before fit-to-HD)
                     if settings.get("burnin", False):
                         burnin_web_settings = load_burnin_web_settings()
                         burnin_from_web_json(
@@ -2959,8 +3010,13 @@ if grab_stills:
                             metadata_block=meta_block,
                             burnin_cfg=burnin_web_settings,
                             out_path=img_path,
-                            vertical_crop=(_ogc_enabled and _frameline_orientation == "vertical_9_16")
+                            vertical_crop=(_ogc_enabled and _frameline_orientation == "vertical_9_16"),
+                            native_ratio_crop=_native_ratio_mode
                         )
+
+                    # Fit HD canvas — after crop+burnins so bars are on the cropped area
+                    if settings.get("fit_to_1920_canvas", False):
+                        fit_image_into_black_canvas(img_path, 1920, 1080)
 
                     # Resize scales the final image (including burnins) proportionally
                     # Skipped when fit HD is active (fixed 1920x1080 output)

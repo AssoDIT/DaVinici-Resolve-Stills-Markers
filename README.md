@@ -13,11 +13,11 @@ Resolve Stills Markers Exporter is a DaVinci Resolve Workflow Integration plugin
 - Move timeline markers onto their corresponding clip (Media Pool item markers)
 - Restrict all operations to the timeline In/Out range
 - Apply customizable burn-ins via JSON layout
-- Apply cinematic blanking (aspect ratio mask: bars, frame, or both)
+- Apply cinematic blanking (aspect ratio mask: bars, frame, or both) — with None and Custom ratio options
 - Export marker-based EDL files
 - Remove DRX files automatically
 - Optionally compress exported images with ImageOptim
-- Open Gate Crop: extract 16:9 delivery area from native sensor stills (3:2, 4:3…) and upscale to 1920×1080
+- Framelines Crop: extract delivery or native-ratio area from open-gate stills, with three orientations (H 16:9, V 9:16, Native Ratio) and safety area %
 - Open destination folder in Finder after export
 - Export burn-in presets as Resolve-compatible XML
 - Import and browse existing Resolve burn-in presets
@@ -101,10 +101,11 @@ The plugin includes a web-based burn-in layout editor with:
 - Background opacity per element
 - Custom template builder using metadata tokens
 - Token search and favorites panel
-- Cinematic blanking preview
+- Cinematic blanking preview — ratio selector with **None** (no bars) and **Custom** (free numeric ratio) options
 - Safe guides preview
-- Open Gate Crop settings: orientation (H 16:9 / V 9:16), native format preset, custom resolution, safety area %, X/Y offset
-- Frameline overlay: canvas dims outside the active frameline, border drawn in orange
+- Framelines Crop settings: orientation (**H 16:9** / **V 9:16** / **Native Ratio**), native format preset, custom resolution, safety area % (>100% supported), X/Y offset
+- Frameline overlay: canvas dims outside the active frameline; frameline can exceed canvas bounds at >100% safety
+- Drag-and-drop image onto the canvas for a live preview with your own stills
 - Direct JSON save
 - Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y)
 - Save shortcut (Cmd/Ctrl+S)
@@ -291,24 +292,19 @@ If `Good_Take = "1"`, the token renders as `*`.
 
 ## Cinematic Blanking
 
-Supported ratios:
+The **Ratio** selector controls the delivery format bars drawn over the image.
 
-```
-1.33 (4/3)
-1.66
-1.77 (16:9, default)
-1.85
-2.00
-2.35
-2.39
-2.40
-```
+| Value | Behaviour |
+|---|---|
+| **None** | No ratio applied — full frame, no bars or frame lines |
+| 1.33 … 2.40 | Standard delivery ratios |
+| **Custom** | Type any numeric ratio (e.g. `1.5`) — the field narrows the dropdown to 2/3 and shows the input in the remaining 1/3 |
 
 Mask styles:
 
-- Bars
-- Frame
-- Bars + Frame
+- **Bars** — solid black letterbox/pillarbox
+- **Frame** — white border line only
+- **Bars + Frame** — both combined
 
 Mask opacity is respected during export.
 
@@ -318,9 +314,12 @@ Mask opacity is respected during export.
 
 1. Grab still
 2. Export to disk
-3. Open Gate Crop → upscale to 1920×1080 (if enabled)
-4. Fit to FHD canvas (if enabled, and OGC inactive)
-5. Apply blanking mask + render burn-ins from JSON
+3. **Framelines Crop** (if enabled) — orientation determines function:
+   - H 16:9 → upscale to 1920×1080
+   - V 9:16 → centre crop, no upscale
+   - Native Ratio → crop to sensor ratio, resize to `round(1080 × ratio) × 1080`
+4. **Apply blanking mask + burn-ins** on the cropped frame
+5. **Fit to FHD canvas** (if enabled) — embeds result in 1920×1080 black canvas
 6. Resize by percentage (if enabled; skipped when Fit HD active)
 7. Save final image
 8. Optional ImageOptim compression (macOS)
@@ -353,22 +352,14 @@ Mask opacity is respected during export.
 - Restrict grab between In/Out
 - Marker-based EDL export
 - Optional ImageOptim compression (JPEG + PNG)
-- Open Gate Crop: horizontal 16:9 (upscale to 1920×1080) or vertical 9:16 (side crop, no upscale), with safety area and native format presets (Arri, Sony Venice)
+- Framelines Crop: H 16:9 (upscale to 1920×1080), V 9:16 (side crop, no upscale), or **Native Ratio** (crop to sensor aspect, resize to native-ratio HD), with safety area % (>100% supported) and native format presets (Arri, Sony Venice)
 - Open destination folder in Finder after export
 
 ---
 
-## Open Gate Crop
+## Framelines Crop
 
-Designed for cameras that shoot in an open-gate (native sensor) format. The orientation is set in the Burn-In Web Editor and determines how the still is processed.
-
-### Horizontal 16:9 (default)
-
-Extracts the 16:9 delivery area from a wider sensor still and upscales it to 1920×1080 before applying burn-ins.
-
-Two cases are handled automatically:
-- **Timeline export (pillarboxed)**: the 3:2 (or wider) content is centred in a 16:9 frame — the plugin detects the content width, crops the 16:9 centre, and upscales
-- **Full sensor export**: the native ratio is wider than 16:9 — the plugin crops the 16:9 centre vertically and upscales
+Designed for cameras that shoot in an open-gate (native sensor) format. The orientation is set in the Burn-In Web Editor and determines how the still is processed. Enable with the **Framelines Crop** checkbox in the plugin.
 
 **Supported presets:**
 
@@ -378,19 +369,40 @@ Two cases are handled automatically:
 | Arri AlexaLF 4.5K OG | 4448 × 3096 |
 | Sony Venice 1 6K 3:2 | 6048 × 4032 |
 | Sony Venice 2 8.6K 3:2 | 8640 × 5760 |
-| Custom | user-defined |
+| Custom | user-defined W × H |
 
-**Safety Area**: additional symmetric inset applied before upscale (e.g. 95% crops 2.5% on each side).
+### Horizontal 16:9
 
-Burn-in text size is always computed at 1920px reference width — resize percentage scales the final image proportionally.
+Extracts the 16:9 delivery area from a wider sensor still and upscales it to 1920×1080 before applying burn-ins.
+
+Two cases are handled automatically:
+- **Timeline export (pillarboxed)**: content is centred in a 16:9 frame — the plugin detects the content width, crops the 16:9 centre, and upscales
+- **Full sensor export**: the native ratio is wider than 16:9 — the plugin crops the 16:9 centre vertically and upscales
 
 ### Vertical 9:16
 
 Crops the centre 9:16 area from a 16:9 still. No upscale — the output image has the dimensions of the crop. Burn-ins fill the full cropped frame (no cinematic blanking applied). The Native Format preset is not used in this mode.
 
-**Safety Area**: symmetric inset applied to the crop area (e.g. 95% reduces width and height by 5% symmetrically before cropping).
+### Native Ratio
 
-**X/Y Offset**: shifts the crop window relative to the image centre (% of image dimensions), allowing off-centre vertical framing.
+Crops the still to the camera's native sensor aspect ratio and resizes to a native-ratio HD frame.
+
+Output dimensions: `OUT_H = 1080`, `OUT_W = round(1080 × native_w / native_h)`.
+
+Example — Sony Venice 1 6K 3:2 → output 1620 × 1080.
+
+Cinematic blanking (delivery ratio bars) and burn-ins are then applied on top of this native-ratio frame. Enable **Fit to FHD** after to embed the result in a 1920 × 1080 black canvas if needed.
+
+### Safety Area
+
+Symmetric inset applied to the crop area.
+- `< 100%` zooms in (crops tighter)
+- `= 100%` crops exactly to the defined ratio
+- `> 100%` zooms out (crops wider, up to the image bounds)
+
+### X/Y Offset
+
+Shifts the crop window relative to the image centre (% of image dimensions), allowing off-centre framing. Double-click the **X** or **Y** label in the web editor to reset to 0.
 
 ---
 

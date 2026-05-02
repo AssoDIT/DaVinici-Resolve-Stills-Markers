@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_DIR = BASE_DIR  # Stills_Marker_python_settings
-JSON_PATH = os.path.join(SETTINGS_DIR, ".burnin_web_settings.json")
+JSON_PATH = os.path.join(SETTINGS_DIR, "burnin_web_settings.json")
 
 def _find_xml_path():
     candidates = [
@@ -816,9 +816,8 @@ def sanitize_payload(data: dict) -> dict:
     # ---- preview state (ratio / mask / guides) ----
     preview_in = data.get("preview") if isinstance(data.get("preview"), dict) else {}
 
-    ratio = _safe_float(preview_in.get("ratio", data.get("ratio", 1.77)), 1.77)
-    allowed_ratios = {1.33, 1.66, 1.77, 1.85, 2.00, 2.35, 2.39, 2.40}
-    ratio = ratio if ratio in allowed_ratios else 1.77
+    _raw_ratio = _safe_float(preview_in.get("ratio", data.get("ratio", 1.77)), 1.77)
+    ratio = 0.0 if _raw_ratio == 0 else max(0.5, min(10.0, _raw_ratio))
 
     mode = str(preview_in.get("mode", data.get("ratio_mode", "crop"))).strip().lower()
     if mode not in {"crop", "fit"}:
@@ -859,18 +858,25 @@ def sanitize_payload(data: dict) -> dict:
         "preset":          ogc_preset,
         "custom_w":        max(1, min(20000, _safe_int(ogc_in.get("custom_w", 3), 3))),
         "custom_h":        max(1, min(20000, _safe_int(ogc_in.get("custom_h", 2), 2))),
-        "safety":          max(50.0, min(100.0, _safe_float(ogc_in.get("safety", 100.0), 100.0))),
+        "safety":          max(1.0, min(200.0, _safe_float(ogc_in.get("safety", 100.0), 100.0))),
         "show_frameline":  bool(ogc_in.get("show_frameline", False)),
     }
 
     # ---- frameline orientation + offset ----
-    _fl_orientations = {"horizontal_16_9", "vertical_9_16"}
+    _fl_orientations = {"horizontal_16_9", "vertical_9_16", "native_ratio"}
     fl_orientation   = str(data.get("frameline_orientation", "horizontal_16_9")).strip()
     if fl_orientation not in _fl_orientations:
         fl_orientation = "horizontal_16_9"
     out["frameline_orientation"] = fl_orientation
     out["frameline_offset_x"]    = max(-50.0, min(50.0, _safe_float(data.get("frameline_offset_x", 0.0), 0.0)))
     out["frameline_offset_y"]    = max(-50.0, min(50.0, _safe_float(data.get("frameline_offset_y", 0.0), 0.0)))
+
+    # ---- ratio select / custom (UI state) ----
+    _ratio_select = str(data.get("image_ratio_select", "1.77")).strip()
+    if _ratio_select not in {"none", "custom"} and not _ratio_select.replace(".", "", 1).isdigit():
+        _ratio_select = "1.77"
+    out["image_ratio_select"] = _ratio_select
+    out["image_ratio_custom"] = max(0.1, min(20.0, _safe_float(data.get("image_ratio_custom", 1.5), 1.5)))
 
     # ---- still naming ----
     raw_naming = data.get("still_naming", "")

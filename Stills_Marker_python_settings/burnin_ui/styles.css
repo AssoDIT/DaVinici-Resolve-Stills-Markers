@@ -214,3 +214,20 @@ input[type="range"]::-webkit-slider-thumb{
 select::-ms-expand{
   display:none;
 }
+
+#ratioSelectWrap{
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+#ratioSelectWrap select{
+  width:100%;
+  flex:1;
+  min-width:0;
+}
+#ratioSelectWrap.custom-active select{
+  flex:2;
+}
+#ratioSelectWrap.custom-active #imageRatioCustom{
+  flex:1 !important;
+}
