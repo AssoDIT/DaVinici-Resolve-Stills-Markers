@@ -57,6 +57,18 @@ const els = {
 
 const ctx = els.canvas.getContext("2d");
 
+function setCustomRatioActive(active){
+  const ratioWrap = document.getElementById("ratioSelectWrap");
+  if(!ratioWrap) return;
+  if(active){
+    ratioWrap.classList.add("custom-active");
+    if(els.imageRatioCustom) els.imageRatioCustom.style.display = "";
+  } else {
+    ratioWrap.classList.remove("custom-active");
+    if(els.imageRatioCustom) els.imageRatioCustom.style.display = "none";
+  }
+}
+
 let state = {
   selectedIndex: null,
   burnin_font_path: "",
@@ -848,18 +860,6 @@ function bindInputs(){
   previewWrap.addEventListener("dragleave", () => { previewWrap.classList.remove("drag-over"); });
   previewWrap.addEventListener("drop", (ev) => { ev.preventDefault(); previewWrap.classList.remove("drag-over"); loadImageFile(ev.dataTransfer.files[0]); });
 
-  const ratioWrap = document.getElementById("ratioSelectWrap");
-
-  function setCustomRatioActive(active){
-    if(!ratioWrap) return;
-    if(active){
-      ratioWrap.classList.add("custom-active");
-      if(els.imageRatioCustom) els.imageRatioCustom.style.display = "";
-    } else {
-      ratioWrap.classList.remove("custom-active");
-      if(els.imageRatioCustom) els.imageRatioCustom.style.display = "none";
-    }
-  }
 
   if(els.imageRatio){
     els.imageRatio.addEventListener("change", ()=>{
