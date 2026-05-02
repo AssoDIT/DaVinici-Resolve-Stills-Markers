@@ -836,7 +836,8 @@ dict_settings = {
     "burnin": False,
     "fit_to_1920_canvas": False,
     "open_destination_folder": False,
-    "replace_stills": False
+    "replace_stills": False,
+    "skip_grab": False
 }
 
 
@@ -1909,6 +1910,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     burnin_check_boxID = "BurninCheckBox"
     fit_canvas_check_boxID = "FitCanvasCheckBox"
     open_gate_crop_check_boxID = "OpenGateCropCheckBox"
+    skip_grab_check_boxID = "SkipGrabCheckBox"
 
     compress_setting_boxID = "CompressSettings"
     compress_combo_boxID = "CompressComboBox"
@@ -2329,6 +2331,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": skip_grab_check_boxID,
+                                        "Text": "Skip still grab",
+                                        "Checked": settings.get("skip_grab", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
                                 ui.HGap(0, 1),
                             ],
                         ),
@@ -2535,6 +2546,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["open_gate_crop"] = window_items[open_gate_crop_check_boxID].Checked
         settings["open_destination_folder"] = window_items[open_dest_check_boxID].Checked
         settings["replace_stills"] = window_items[replace_stills_check_boxID].Checked
+        settings["skip_grab"] = window_items[skip_grab_check_boxID].Checked
 
         save_settings_to_json(settings)
         dispatcher.ExitLoop(True)
@@ -2580,6 +2592,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[open_gate_crop_check_boxID].Toggled = OnGenericToggled
     main_window.On[open_dest_check_boxID].Toggled = OnGenericToggled
     main_window.On[replace_stills_check_boxID].Toggled = OnGenericToggled
+    main_window.On[skip_grab_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[cancel_buttonID].Clicked = OnCancelButtonClicked
     main_window.On[start_buttonID].Clicked = OnStartButtonClicked
@@ -2657,17 +2670,22 @@ print("launching script main loop and grab_stills is ", grab_stills)
 output_path = None  # set here so it survives across both if grab_stills: blocks
 
 if grab_stills:
-    # Create the album now if it didn't exist at startup
-    if still_album is None:
-        still_album = gallery.CreateGalleryStillAlbum()
-        if still_album:
-            gallery.SetAlbumName(still_album, _tl_album_name)
-            gallery.SetCurrentStillAlbum(still_album)
-            print(f"Gallery album created: '{_tl_album_name}'")
-        else:
-            still_album = gallery.GetCurrentStillAlbum()
-            print(f"CreateGalleryStillAlbum() returned None — using current album")
-    assert still_album, "Couldn't get or create a gallery still album"
+    _skip_grab = settings.get("skip_grab", False)
+    if _skip_grab:
+        print("[skip_grab] Still grab disabled — running marker/EDL/JSON operations only")
+
+    if not _skip_grab:
+        # Create the album now if it didn't exist at startup
+        if still_album is None:
+            still_album = gallery.CreateGalleryStillAlbum()
+            if still_album:
+                gallery.SetAlbumName(still_album, _tl_album_name)
+                gallery.SetCurrentStillAlbum(still_album)
+                print(f"Gallery album created: '{_tl_album_name}'")
+            else:
+                still_album = gallery.GetCurrentStillAlbum()
+                print(f"CreateGalleryStillAlbum() returned None — using current album")
+        assert still_album, "Couldn't get or create a gallery still album"
 
     initial_state = change_page("color")
 
@@ -2723,6 +2741,10 @@ if grab_stills:
     elif settings.get("export_edl_markers", False):
         output_path = settings["export_to"]
 
+    # --- Skip-grab: resolve output path for EDL/JSON even without disk export ---
+    elif _skip_grab and settings.get("export_to", "").strip():
+        output_path = settings["export_to"]
+
     # EDL export — prepare paths/filters now, actual write happens after grab loop
     # so that metadata_by_frame is fully populated when export_markers_to_edl runs.
     _edl_markers = None
@@ -2745,16 +2767,18 @@ if grab_stills:
             edl_filename
         )
 
-# Always initialize so post-loop blocks don't NameError when grab_stills=False
-initial_state       = None
-_pending_marker_renames = []
-_pending_clip_markers   = []
-all_exported_files  = []
-metadata_json       = {}
-metadata_by_frame   = {}
-_still_naming       = ""
-_edl_markers        = None
-_edl_path           = None
+if not grab_stills:
+    # Fallback init: prevent NameErrors when user cancelled
+    _skip_grab          = False
+    initial_state       = None
+    _pending_marker_renames = []
+    _pending_clip_markers   = []
+    all_exported_files  = []
+    metadata_json       = {}
+    metadata_by_frame   = {}
+    _still_naming       = ""
+    _edl_markers        = None
+    _edl_path           = None
 
 if grab_stills:
     marker_frames = sorted(markers_src.keys())
@@ -2811,15 +2835,18 @@ if grab_stills:
         tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
 
         assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
-        # Re-select album before each grab — page changes can reset Resolve's
-        # active gallery album, causing GrabStill to deposit into the wrong album.
-        gallery.SetCurrentStillAlbum(still_album)
-        _stills_before = still_album.GetStills() or []
-        grabbed = timeline.GrabStill()
-        if not grabbed:
-            raise Exception(f"Couldn't grab still at {tc}")
-        _stills_after = still_album.GetStills() or []
-        print(f"[grab_debug] album stills before={len(_stills_before)} after={len(_stills_after)} grabbed_in_album={grabbed in _stills_after}")
+
+        grabbed = None
+        if not _skip_grab:
+            # Re-select album before each grab — page changes can reset Resolve's
+            # active gallery album, causing GrabStill to deposit into the wrong album.
+            gallery.SetCurrentStillAlbum(still_album)
+            _stills_before = still_album.GetStills() or []
+            grabbed = timeline.GrabStill()
+            if not grabbed:
+                raise Exception(f"Couldn't grab still at {tc}")
+            _stills_after = still_album.GetStills() or []
+            print(f"[grab_debug] album stills before={len(_stills_before)} after={len(_stills_after)} grabbed_in_album={grabbed in _stills_after}")
 
         # Collect metadata immediately after grab and write JSON incrementally
         meta_block = collect_full_metadata_at_playhead(
@@ -2872,7 +2899,7 @@ if grab_stills:
                     parts.append(clipname)
                 new_label = " ".join(parts).strip()
 
-            if new_label:
+            if new_label and not _skip_grab and grabbed:
                 # "/" is illegal in filenames — Resolve uses the label as the exported filename
                 still_label = new_label.replace("/", "-")
                 ok_label = still_album.SetLabel(grabbed, still_label)
@@ -2968,7 +2995,7 @@ if grab_stills:
         # -------------------------------------------------
         # SINGLE-PASS DISK EXPORT (no second traversal)
         # -------------------------------------------------
-        if settings.get("export", False):
+        if not _skip_grab and settings.get("export", False):
             prefix = ""
             reselect_album(still_album, gallery)
             _album_stills_now = still_album.GetStills() or []
@@ -3284,14 +3311,25 @@ if grab_stills and output_path:
         clips_data = []
         for item in (timeline.GetItemListInTrack("video", 1) or []):
             mpi = item.GetMediaPoolItem() if hasattr(item, "GetMediaPoolItem") else None
+            clip_props = mpi.GetClipProperty() if mpi else {}
+
+            file_path = clip_props.get("File Path", "").strip()
+            file_size_bytes = None
+            if file_path and os.path.isfile(file_path):
+                try:
+                    file_size_bytes = os.path.getsize(file_path)
+                except Exception:
+                    pass
+
             clips_data.append({
                 "clip_name":       item.GetName(),
                 "start_frame":     item.GetStart(),
                 "end_frame":       item.GetEnd(),
                 "duration":        item.GetDuration(),
                 "left_offset":     item.GetLeftOffset() if hasattr(item, "GetLeftOffset") else None,
-                "metadata":        mpi.GetMetadata()      if mpi else {},
-                "clip_properties": mpi.GetClipProperty()  if mpi else {},
+                "file_size_bytes": file_size_bytes,
+                "metadata":        mpi.GetMetadata() if mpi else {},
+                "clip_properties": clip_props,
             })
         clips_json_path = os.path.join(
             output_path,
