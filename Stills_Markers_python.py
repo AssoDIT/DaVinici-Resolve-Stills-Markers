@@ -837,7 +837,8 @@ dict_settings = {
     "fit_to_1920_canvas": False,
     "open_destination_folder": False,
     "replace_stills": False,
-    "skip_grab": False
+    "skip_grab": False,
+    "use_active_gallery_album": False
 }
 
 
@@ -1911,6 +1912,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     fit_canvas_check_boxID = "FitCanvasCheckBox"
     open_gate_crop_check_boxID = "OpenGateCropCheckBox"
     skip_grab_check_boxID = "SkipGrabCheckBox"
+    use_active_gallery_album_check_boxID = "UseActiveGalleryAlbumCheckBox"
 
     compress_setting_boxID = "CompressSettings"
     compress_combo_boxID = "CompressComboBox"
@@ -1961,15 +1963,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             "WindowTitle": win_name,
             "WindowFlags": window_flags,
             "WindowModality": "ApplicationModal",
-            "FixedSize": [638, 450],
+            "FixedSize": [638, 510],
             "Events": {"Close": True, "KeyPress": True},
         },
         ui.VGroup(
-            {"MinimumSize": [638, 450], "MaximumSize": [638, 450], "Weight": 1},
+            {"MinimumSize": [638, 510], "MaximumSize": [638, 510], "Weight": 1},
             [
                 ui.HGroup({"Weight": 1, "Spacing": 0}, [
                     ui.HGap(14),
-                    ui.VGroup({"Weight": 1, "Spacing": 6}, [
+                    ui.VGroup({"Weight": 1, "Spacing": 4}, [
                         ui.VGap(4),
                         # ── Markers (top rows) ───────────────────────────────────
                         ui.HGroup(
@@ -2012,16 +2014,16 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                             ],
                         ),
                         ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
+                            {"Weight": 0, "Spacing": 4},
                             [
                                 ui.Label({"Weight": 1, "ID": info_labelID}),
                             ],
                         ),
-                        ui.VGap(2),
+                        ui.VGap(1),
                         hline(1),
                         # ── Rename ───────────────────────────────────────────────
                         ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
+                            {"Weight": 0, "Spacing": 4},
                             [
                                 ui.CheckBox(
                                     {
@@ -2045,19 +2047,19 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                     {
                                         "Weight": 0,
                                         "ID": rename_format_combo_boxID,
-                                        "MinimumSize": [70, 0],
-                                        "MaximumSize": [70, 16777215],
+                                        "MinimumSize": [65, 0],
+                                        "MaximumSize": [65, 16777215],
                                     }
                                 ),
                                 ui.HGap(20),
                             ],
                         ),
                         ui.VGroup(
-                            {"ID": rename_options_groupID, "Weight": 0, "Spacing": 6,
+                            {"ID": rename_options_groupID, "Weight": 0, "Spacing": 4,
                              "Enabled": settings.get("rename_with_meta", False)},
                             [
                                 ui.HGroup(
-                                    {"Weight": 0, "Spacing": 10},
+                                    {"Weight": 0, "Spacing": 4},
                                     [
                                         ui.CheckBox(
                                             {
@@ -2072,8 +2074,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                             {
                                                 "Weight": 0,
                                                 "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                                "MinimumSize": [95, 0],
-                                                "MaximumSize": [95, 16777215],
+                                                "MinimumSize": [90, 0],
+                                                "MaximumSize": [90, 16777215],
                                                 "Text": "Scene separator",
                                             }
                                         ),
@@ -2083,8 +2085,8 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "ID": rename_sep_line_editID,
                                                 "Text": settings.get("rename_scene_shot_separator", "/"),
                                                 "Alignment": {"AlignHCenter": True},
-                                                "MinimumSize": [60, 0],
-                                                "MaximumSize": [60, 16777215],
+                                                "MinimumSize": [55, 0],
+                                                "MaximumSize": [55, 16777215],
                                             }
                                         ),
                                         ui.HGap(35),
@@ -2096,7 +2098,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         hline(1),
                         # ── Markers ──────────────────────────────────────────────
                         ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
+                            {"Weight": 0, "Spacing": 4},
                             [
                                 ui.CheckBox(
                                     {
@@ -2138,40 +2140,49 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                         ),
                         ui.VGap(2),
                         hline(1),
-                        # ── Export ───────────────────────────────────────────────
+                        # ── Skip + Album + Export + Format ───────────────────────
                         ui.HGroup(
-                            {"Weight": 0, "Spacing": 10},
+                            {"Weight": 0, "Spacing": 6},
                             [
                                 ui.CheckBox(
                                     {
-                                        "Weight": 1,
+                                        "Weight": 0,
+                                        "ID": skip_grab_check_boxID,
+                                        "Text": "Skip still grab",
+                                        "Checked": settings.get("skip_grab", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": use_active_gallery_album_check_boxID,
+                                        "Text": "Use active album",
+                                        "Checked": settings.get("use_active_gallery_album", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
                                         "ID": export_check_boxID,
                                         "Text": "Export grabbed stills",
                                         "Checked": settings["export"],
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-                                ui.Label(
-                                    {
-                                        "Weight": 0,
-                                        "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                        "MinimumSize": [55, 0],
-                                        "MaximumSize": [55, 16777215],
-                                        "Text": "Format",
-                                    }
-                                ),
+                                ui.HGap(50),
                                 ui.ComboBox(
                                     {
                                         "Weight": 0,
                                         "ID": format_combo_boxID,
-                                        "MinimumSize": [160, 0],
-                                        "MaximumSize": [160, 16777215],
+                                        "MinimumSize": [165, 0],
+                                        "MaximumSize": [165, 16777215],
                                     }
                                 ),
-                                ui.HGap(20),
                             ],
                         ),
-                        ui.VGap(2),
+                        ui.VGap(5),
                         ui.VGroup(
                             {"ID": export_settingsID, "Weight": 0, "Spacing": 6, "Enabled": settings["export"]},
                             [
@@ -2200,6 +2211,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
+                                        ui.HGap(60),
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
@@ -2211,7 +2223,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         ),
                                         ui.LineEdit(
                                             {
-                                                "Weight": 1,
+                                                "Weight": 0,
                                                 "ID": sub_folder_name_line_editID,
                                                 "Text": settings["sub_folder_name"],
                                                 "MinimumSize": [100, 0],
@@ -2220,10 +2232,19 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         ),
                                     ],
                                 ),
-                                # Resize + Remove DRX
+                                # Replace Stills + Resize + Remove DRX
                                 ui.HGroup(
                                     {"Weight": 0, "Spacing": 10},
                                     [
+                                        ui.CheckBox(
+                                            {
+                                                "Weight": 0,
+                                                "ID": replace_stills_check_boxID,
+                                                "Text": "Replace stills",
+                                                "Checked": settings.get("replace_stills", False),
+                                                "Events": {"Toggled": True},
+                                            }
+                                        ),
                                         ui.CheckBox(
                                             {
                                                 "Weight": 0,
@@ -2231,15 +2252,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Text": "Resize stills in %",
                                                 "Checked": settings["resize_stills"],
                                                 "Events": {"Toggled": True},
-                                            }
-                                        ),
-                                        ui.Label(
-                                            {
-                                                "Weight": 0,
-                                                "Alignment": {"AlignRight": True, "AlignVCenter": True},
-                                                "MinimumSize": [60, 0],
-                                                "MaximumSize": [60, 16777215],
-                                                "Text": "Resize to",
                                             }
                                         ),
                                         ui.LineEdit(
@@ -2262,66 +2274,61 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
-                                        ui.HGap(0, 1),
-                                    ],
-                                ),
-                                # Burnins + Compress
-                                ui.HGroup(
-                                    {"ID": compress_setting_boxID, "Weight": 0, "Spacing": 10},
-                                    [
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": open_gate_crop_check_boxID,
-                                                "Text": "Framelines Crop",
-                                                "Checked": settings.get("open_gate_crop", False),
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": fit_canvas_check_boxID,
-                                                "Text": "Fit to FHD canvas",
-                                                "Checked": settings.get("fit_to_1920_canvas", False),
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": burnin_check_boxID,
-                                                "Text": "Burnins",
-                                                "Checked": settings.get("burnin", False),
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
+                                        ui.HGap(0),
                                         ui.ComboBox(
                                             {
                                                 "Weight": 0,
                                                 "ID": compress_combo_boxID,
-                                                "MinimumSize": [190, 0],
+                                                "MinimumSize": [175, 0],
                                                 "Events": {"CurrentIndexChanged": True},
                                             }
                                         ),
-                                        ui.HGap(0, 1),
                                     ],
                                 ),
                             ],
                         ),
-                        # ── Misc ─────────────────────────────────────────────────
+                        ui.VGap(2),
+                        hline(1),
+                        # ── Framelines Crop + Fit to FHD + Burnins ───────────────
                         ui.HGroup(
                             {"Weight": 0, "Spacing": 10},
                             [
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
-                                        "ID": replace_stills_check_boxID,
-                                        "Text": "Replace stills",
-                                        "Checked": settings.get("replace_stills", False),
+                                        "ID": burnin_check_boxID,
+                                        "Text": "Burnins",
+                                        "Checked": settings.get("burnin", False),
                                         "Events": {"Toggled": True},
                                     }
                                 ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": fit_canvas_check_boxID,
+                                        "Text": "Fit to FHD canvas",
+                                        "Checked": settings.get("fit_to_1920_canvas", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": open_gate_crop_check_boxID,
+                                        "Text": "Framelines Crop",
+                                        "Checked": settings.get("open_gate_crop", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.HGap(0, 1),
+                            ],
+                        ),
+                        ui.VGap(3),
+                        hline(1),
+                        # ── Framelines Crop ───────────────────────────────────────
+                        ui.HGroup(
+                            {"Weight": 0, "Spacing": 10},
+                            [
                                 ui.CheckBox(
                                     {
                                         "Weight": 0,
@@ -2331,19 +2338,10 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "Events": {"Toggled": True},
                                     }
                                 ),
-                                ui.CheckBox(
-                                    {
-                                        "Weight": 0,
-                                        "ID": skip_grab_check_boxID,
-                                        "Text": "Skip still grab",
-                                        "Checked": settings.get("skip_grab", False),
-                                        "Events": {"Toggled": True},
-                                    }
-                                ),
                                 ui.HGap(0, 1),
                             ],
                         ),
-                        ui.VGap(2),
+
                         # ── Buttons ──────────────────────────────────────────────
                         ui.HGroup(
                             {
@@ -2387,7 +2385,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
             marker_src = markers if not _restrict else markers_in_out
         marker_count_by_color_local = markers_dict["get_marker_count_by_color"](marker_src)
 
-        export_on = window_items[export_check_boxID].Checked
+        _skip_on = window_items[skip_grab_check_boxID].Checked
+        window_items[export_check_boxID].Enabled = not _skip_on
+        export_on = window_items[export_check_boxID].Checked and not _skip_on
         edl_on = window_items[
             export_edl_markers_check_boxID].Checked if export_edl_markers_check_boxID in window_items else settings.get(
             "export_edl_markers", False)
@@ -2427,6 +2427,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         window_items[open_dest_check_boxID].Enabled = export_on
         window_items[replace_stills_check_boxID].Enabled = export_on
+        window_items[use_active_gallery_album_check_boxID].Enabled = not _skip_on
 
         # Move-marker actions: disable when the source doesn't have markers to move
         window_items[move_markers_to_clips_check_boxID].Enabled    = (_source != "clip")
@@ -2547,6 +2548,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["open_destination_folder"] = window_items[open_dest_check_boxID].Checked
         settings["replace_stills"] = window_items[replace_stills_check_boxID].Checked
         settings["skip_grab"] = window_items[skip_grab_check_boxID].Checked
+        settings["use_active_gallery_album"] = window_items[use_active_gallery_album_check_boxID].Checked
 
         save_settings_to_json(settings)
         dispatcher.ExitLoop(True)
@@ -2593,6 +2595,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[open_dest_check_boxID].Toggled = OnGenericToggled
     main_window.On[replace_stills_check_boxID].Toggled = OnGenericToggled
     main_window.On[skip_grab_check_boxID].Toggled = OnGenericToggled
+    main_window.On[use_active_gallery_album_check_boxID].Toggled = OnGenericToggled
 
     main_window.On[cancel_buttonID].Clicked = OnCancelButtonClicked
     main_window.On[start_buttonID].Clicked = OnStartButtonClicked
@@ -2609,18 +2612,23 @@ assert gallery, "Couldn't get the Resolve stills gallery"
 timeline = project.GetCurrentTimeline()
 assert timeline, "Couldn't get current timeline"
 
-# Look for an existing album named after the timeline.
+# Look for an existing album named after the timeline (or use the active one).
 # Creation is deferred until the user actually clicks Start (avoid creating orphan albums).
 _tl_album_name = timeline.GetName()
-still_album = None
-for _candidate in (gallery.GetGalleryStillAlbums() or []):
-    if gallery.GetAlbumName(_candidate) == _tl_album_name:
-        still_album = _candidate
-        gallery.SetCurrentStillAlbum(still_album)
-        print(f"Gallery album found: '{_tl_album_name}'")
-        break
-# Use the timeline name for the UI label regardless of whether the album exists yet
-still_album_name = gallery.GetAlbumName(still_album) if still_album else _tl_album_name
+if settings.get("use_active_gallery_album", False):
+    still_album = gallery.GetCurrentStillAlbum()
+    still_album_name = gallery.GetAlbumName(still_album) if still_album else "Current Album"
+    print(f"Using active gallery album: '{still_album_name}'")
+else:
+    still_album = None
+    for _candidate in (gallery.GetGalleryStillAlbums() or []):
+        if gallery.GetAlbumName(_candidate) == _tl_album_name:
+            still_album = _candidate
+            gallery.SetCurrentStillAlbum(still_album)
+            print(f"Gallery album found: '{_tl_album_name}'")
+            break
+    # Use the timeline name for the UI label regardless of whether the album exists yet
+    still_album_name = gallery.GetAlbumName(still_album) if still_album else _tl_album_name
 
 timeline_start = timeline.GetStartFrame()
 frame_rate = timeline.GetSetting("timelineFrameRate")
@@ -2674,20 +2682,40 @@ if grab_stills:
     if _skip_grab:
         print("[skip_grab] Still grab disabled — running marker/EDL/JSON operations only")
 
+    _use_active_album = settings.get("use_active_gallery_album", False)
     if not _skip_grab:
-        # Create the album now if it didn't exist at startup
-        if still_album is None:
-            still_album = gallery.CreateGalleryStillAlbum()
-            if still_album:
-                gallery.SetAlbumName(still_album, _tl_album_name)
-                gallery.SetCurrentStillAlbum(still_album)
-                print(f"Gallery album created: '{_tl_album_name}'")
-            else:
+        if _use_active_album:
+            # Use whichever album is currently active — no new album created
+            if still_album is None:
                 still_album = gallery.GetCurrentStillAlbum()
-                print(f"CreateGalleryStillAlbum() returned None — using current album")
+            if still_album:
+                gallery.SetCurrentStillAlbum(still_album)
+                print(f"Grabbing into active gallery album: '{gallery.GetAlbumName(still_album)}'")
+            else:
+                print("No active gallery album found — using current album")
+        else:
+            # Create the album now if it didn't exist at startup
+            if still_album is None:
+                still_album = gallery.CreateGalleryStillAlbum()
+                if still_album:
+                    gallery.SetAlbumName(still_album, _tl_album_name)
+                    gallery.SetCurrentStillAlbum(still_album)
+                    print(f"Gallery album created: '{_tl_album_name}'")
+                else:
+                    still_album = gallery.GetCurrentStillAlbum()
+                    print(f"CreateGalleryStillAlbum() returned None — using current album")
         assert still_album, "Couldn't get or create a gallery still album"
 
     initial_state = change_page("color")
+
+    # Try to make the Gallery panel visible before grabbing.
+    # The Resolve API has no direct panel-switch command, but selecting the album
+    # may help on some builds. If GrabStill still fails the user is prompted below.
+    if not _skip_grab and still_album:
+        try:
+            gallery.SetCurrentStillAlbum(still_album)
+        except Exception:
+            pass
 
     # Build markers source after UI (respects marker_source + restrict_to_in_out)
     _src     = settings.get("marker_source", "timeline")
@@ -2844,7 +2872,13 @@ if grab_stills:
             _stills_before = still_album.GetStills() or []
             grabbed = timeline.GrabStill()
             if not grabbed:
-                raise Exception(f"Couldn't grab still at {tc}")
+                restore_page(initial_state)
+                show_alert(
+                    "Still grab failed.\n\n"
+                    "Please make sure the Gallery panel is visible in DaVinci Resolve's "
+                    "Color page (switch from LUT or Media Pool to Gallery), then run the script again."
+                )
+                exit()
             _stills_after = still_album.GetStills() or []
             print(f"[grab_debug] album stills before={len(_stills_before)} after={len(_stills_after)} grabbed_in_album={grabbed in _stills_after}")
 
@@ -2858,6 +2892,46 @@ if grab_stills:
 
         meta_block["exported_filename"] = None
         metadata_by_frame[str(marker_offset_frame)] = meta_block
+
+        # When skip_grab is active, try to relink existing still files by expected filename
+        if _skip_grab and output_path and os.path.isdir(output_path):
+            _sk_ext = settings.get("format", "jpg")
+            _sk_found = None
+            # Try still_naming template first (most reliable)
+            if _still_naming:
+                _sk_stem = apply_naming_template(_still_naming, meta_block)
+                if _sk_stem:
+                    _sk_candidate = os.path.join(output_path, _sk_stem + "." + _sk_ext)
+                    if os.path.exists(_sk_candidate):
+                        _sk_found = _sk_candidate
+            # Fallback: try the rename_with_meta label
+            if not _sk_found and settings.get("rename_with_meta", False):
+                _sk_fm  = meta_block.get("metadata", {})
+                _sk_fp  = meta_block.get("clip_properties", {})
+                _sk_sc  = str(_sk_fm.get("Scene") or _sk_fm.get("Scene Number") or _sk_fp.get("Scene") or "").strip()
+                _sk_sh  = str(_sk_fm.get("Shot") or _sk_fm.get("Shot Number") or _sk_fp.get("Shot") or "").strip()
+                _sk_tk  = str(_sk_fm.get("Take") or _sk_fm.get("Take Number") or _sk_fp.get("Take") or "").strip()
+                _sk_cm  = str(_sk_fm.get("Camera #") or _sk_fm.get("Camera") or _sk_fm.get("Camera Number") or _sk_fp.get("Camera") or "").strip()
+                _sk_cn  = os.path.splitext(str(meta_block.get("clip_name", "")).strip())[0]
+                _sk_pts = []
+                if _sk_sc:
+                    _sk_base = _sk_sc
+                    if _sk_sh: _sk_base += f"/{_sk_sh}"
+                    if _sk_tk: _sk_base += f"-{_sk_tk}"
+                    _sk_pts.append(_sk_base)
+                if _sk_cm:
+                    _sk_pts.append(f"Cam {_sk_cm}")
+                if not _sk_pts and _sk_cn:
+                    _sk_pts.append(_sk_cn)
+                _sk_label = " ".join(_sk_pts).strip().replace("/", "-")
+                if _sk_label:
+                    _sk_candidate = os.path.join(output_path, _sk_label + "." + _sk_ext)
+                    if os.path.exists(_sk_candidate):
+                        _sk_found = _sk_candidate
+            if _sk_found:
+                meta_block["exported_filename"] = os.path.basename(_sk_found)
+                all_exported_files.append(_sk_found)
+                print(f"[skip_grab] Relinked still: {os.path.basename(_sk_found)}")
 
         # processed_count += 1
         # if total_markers > 0:
