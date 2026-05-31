@@ -1731,13 +1731,15 @@ def parse_resolution_str(res_str):
         return None, None
 
 
-def get_source_resolution_and_tc_at_playhead(timeline, timeline_abs_frame, frame_rate, drop_frame):
+def get_source_resolution_and_tc_at_playhead(timeline, timeline_abs_frame, frame_rate, drop_frame, item=None):
     """
     Retourne (src_res_text, src_tc_text)
     - src_res_text : "1920x1080" si dispo
     - src_tc_text  : timecode SOURCE au playhead (pas timeline)
+    item : TimelineItem optionnel — évite GetCurrentVideoItem() en skip_grab
     """
-    item = timeline.GetCurrentVideoItem()
+    if item is None:
+        item = timeline.GetCurrentVideoItem()
     if not item:
         return "", ""
 
@@ -1835,14 +1837,20 @@ def extract_fields_at_playhead(timeline):
 
 # ---------------------------------------------------------------------------
 # NEW: Collect all available metadata and clip properties at playhead
-def collect_full_metadata_at_playhead(timeline, timeline_abs_frame, frame_rate, drop_frame):
+def collect_full_metadata_at_playhead(timeline, timeline_abs_frame, frame_rate, drop_frame,
+                                      item=None, timeline_tc=None):
     """
-    Collect ALL available metadata and clip properties for current playhead position.
-    Returns a fully serializable dict.
+    Collect ALL available metadata and clip properties for a given timeline frame.
+    item      : TimelineItem optionnel — évite GetCurrentVideoItem() en skip_grab (pas de navigation)
+    timeline_tc : timecode pré-calculé — évite GetCurrentTimecode() quand le playhead n'est pas positionné
     """
-    item = timeline.GetCurrentVideoItem()
+    if item is None:
+        item = timeline.GetCurrentVideoItem()
     if not item:
         return {}
+
+    if timeline_tc is None:
+        timeline_tc = timeline.GetCurrentTimecode()
 
     mpi = item.GetMediaPoolItem()
     meta = mpi.GetMetadata() if mpi else {}
@@ -1853,12 +1861,13 @@ def collect_full_metadata_at_playhead(timeline, timeline_abs_frame, frame_rate, 
         timeline_abs_frame=timeline_abs_frame,
         frame_rate=frame_rate,
         drop_frame=drop_frame,
+        item=item,
     )
 
     data = {
         "timeline_name": timeline.GetName(),
         "timeline_frame": int(timeline_abs_frame),
-        "timeline_tc": timeline.GetCurrentTimecode(),
+        "timeline_tc": timeline_tc,
         "clip_name": item.GetName(),
         "source_tc": src_tc_txt,
         "source_resolution": src_res_txt,
@@ -2706,16 +2715,16 @@ if grab_stills:
                     print(f"CreateGalleryStillAlbum() returned None — using current album")
         assert still_album, "Couldn't get or create a gallery still album"
 
-    initial_state = change_page("color")
-
-    # Try to make the Gallery panel visible before grabbing.
-    # The Resolve API has no direct panel-switch command, but selecting the album
-    # may help on some builds. If GrabStill still fails the user is prompted below.
-    if not _skip_grab and still_album:
-        try:
-            gallery.SetCurrentStillAlbum(still_album)
-        except Exception:
-            pass
+    if not _skip_grab:
+        initial_state = change_page("color")
+        # Try to make the Gallery panel visible before grabbing.
+        if still_album:
+            try:
+                gallery.SetCurrentStillAlbum(still_album)
+            except Exception:
+                pass
+    else:
+        initial_state = None
 
     # Build markers source after UI (respects marker_source + restrict_to_in_out)
     _src     = settings.get("marker_source", "timeline")
@@ -2851,6 +2860,32 @@ if grab_stills:
         print(f"OGC/NR: orientation={_frameline_orientation}, "
               f"preset={_ogc_preset} ({_ogc_nw}x{_ogc_nh}), safety={_ogc_safety}%")
 
+    # --- Pre-load existing JSON when In/Out restricted (merge instead of overwrite) ---
+    if settings.get("restrict_to_in_out", False) and output_path and os.path.isdir(output_path):
+        _existing_json_path = os.path.join(
+            output_path,
+            f".{timeline.GetName()}_stills_metadata.json".replace(" ", "_")
+        )
+        if os.path.isfile(_existing_json_path):
+            try:
+                with open(_existing_json_path, "r", encoding="utf-8") as _ejf:
+                    _existing_json = json.load(_ejf)
+                for _k, _v in (_existing_json.get("markers_metadata") or {}).items():
+                    metadata_by_frame[_k] = _v
+                print(f"[in_out] Merged {len(metadata_by_frame)} existing entries from JSON")
+            except Exception as _e:
+                print(f"[in_out] Could not load existing JSON: {_e}")
+
+    # Skip-grab: build clip-map once — marker→clip lookup without any timeline navigation
+    _clip_ranges = None
+    if _skip_grab:
+        _clip_list = timeline.GetItemListInTrack("video", 1) or []
+        _clip_ranges = sorted(
+            [(it.GetStart(), it.GetEnd(), it) for it in _clip_list],
+            key=lambda x: x[0]
+        )
+        print(f"[skip_grab] Clip map built: {len(_clip_ranges)} clips")
+
     # --- ALWAYS grab stills into gallery and export/burnin in a single pass ---
     for marker_frame in marker_frames:
         marker = markers_src.get(marker_frame)
@@ -2862,10 +2897,22 @@ if grab_stills:
         marker_offset_frame = timeline_start + marker_frame
         tc = timecode_from_frame(marker_offset_frame, frame_rate, drop_frame)
 
-        assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
-
         grabbed = None
-        if not _skip_grab:
+        if _skip_grab:
+            # No page change, no navigation — look up clip from pre-built map
+            _meta_item = None
+            if _clip_ranges is not None:
+                for _s, _e, _it in _clip_ranges:
+                    if _s <= marker_offset_frame < _e:
+                        _meta_item = _it
+                        break
+            meta_block = collect_full_metadata_at_playhead(
+                timeline, marker_offset_frame, frame_rate, drop_frame,
+                item=_meta_item, timeline_tc=tc,
+            )
+        else:
+            # Navigate to frame, grab still
+            assert timeline.SetCurrentTimecode(tc), f"Couldn't navigate to marker at {tc}"
             # Re-select album before each grab — page changes can reset Resolve's
             # active gallery album, causing GrabStill to deposit into the wrong album.
             gallery.SetCurrentStillAlbum(still_album)
@@ -2881,31 +2928,26 @@ if grab_stills:
                 exit()
             _stills_after = still_album.GetStills() or []
             print(f"[grab_debug] album stills before={len(_stills_before)} after={len(_stills_after)} grabbed_in_album={grabbed in _stills_after}")
+            meta_block = collect_full_metadata_at_playhead(
+                timeline, marker_offset_frame, frame_rate, drop_frame,
+            )
 
-        # Collect metadata immediately after grab and write JSON incrementally
-        meta_block = collect_full_metadata_at_playhead(
-            timeline,
-            marker_offset_frame,
-            frame_rate,
-            drop_frame,
-        )
-
-        meta_block["exported_filename"] = None
+        # In/Out update mode: carry over existing exported_filename as starting value
+        # (skip_grab block and normal export can still override with a fresher value)
+        _prev_filename = metadata_by_frame.get(str(marker_offset_frame), {}).get("exported_filename") \
+            if settings.get("restrict_to_in_out", False) else None
+        meta_block["exported_filename"] = _prev_filename
         metadata_by_frame[str(marker_offset_frame)] = meta_block
 
-        # When skip_grab is active, try to relink existing still files by expected filename
-        if _skip_grab and output_path and os.path.isdir(output_path):
-            _sk_ext = settings.get("format", "jpg")
-            _sk_found = None
-            # Try still_naming template first (most reliable)
+        # When skip_grab is active, build expected filename (no file existence required — offline-safe)
+        if _skip_grab:
+            _sk_ext  = settings.get("format", "jpg")
+            _sk_stem = None
+            # 1. still_naming template (always tried if configured)
             if _still_naming:
-                _sk_stem = apply_naming_template(_still_naming, meta_block)
-                if _sk_stem:
-                    _sk_candidate = os.path.join(output_path, _sk_stem + "." + _sk_ext)
-                    if os.path.exists(_sk_candidate):
-                        _sk_found = _sk_candidate
-            # Fallback: try the rename_with_meta label
-            if not _sk_found and settings.get("rename_with_meta", False):
+                _sk_stem = apply_naming_template(_still_naming, meta_block) or None
+            # 2. Fallback: scene/shot/take/camera label (always tried, regardless of rename_with_meta setting)
+            if not _sk_stem:
                 _sk_fm  = meta_block.get("metadata", {})
                 _sk_fp  = meta_block.get("clip_properties", {})
                 _sk_sc  = str(_sk_fm.get("Scene") or _sk_fm.get("Scene Number") or _sk_fp.get("Scene") or "").strip()
@@ -2924,14 +2966,23 @@ if grab_stills:
                 if not _sk_pts and _sk_cn:
                     _sk_pts.append(_sk_cn)
                 _sk_label = " ".join(_sk_pts).strip().replace("/", "-")
-                if _sk_label:
-                    _sk_candidate = os.path.join(output_path, _sk_label + "." + _sk_ext)
+                _sk_stem  = _sk_label or None
+            # 3. Last resort: clip name + frame number
+            if not _sk_stem:
+                _sk_cn  = os.path.splitext(str(meta_block.get("clip_name", "")).strip())[0]
+                _sk_fr  = str(meta_block.get("timeline_frame", ""))
+                _sk_stem = f"{_sk_cn}_{_sk_fr}".strip("_") or None
+            # Write expected filename unconditionally — file existence check only for all_exported_files
+            if _sk_stem:
+                _sk_filename = _sk_stem + "." + _sk_ext
+                meta_block["exported_filename"] = _sk_filename
+                if output_path and os.path.isdir(output_path):
+                    _sk_candidate = os.path.join(output_path, _sk_filename)
                     if os.path.exists(_sk_candidate):
-                        _sk_found = _sk_candidate
-            if _sk_found:
-                meta_block["exported_filename"] = os.path.basename(_sk_found)
-                all_exported_files.append(_sk_found)
-                print(f"[skip_grab] Relinked still: {os.path.basename(_sk_found)}")
+                        all_exported_files.append(_sk_candidate)
+                        print(f"[skip_grab] Relinked still: {_sk_filename}")
+                    else:
+                        print(f"[skip_grab] Expected still not on disk: {_sk_filename}")
 
         # processed_count += 1
         # if total_markers > 0:
