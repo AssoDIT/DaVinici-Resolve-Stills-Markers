@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ADIT - Burnin Settings</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="title"><img src="ADIT-Avatar-dark-2.png" style="width:5em"> • DaVinci Resolve Stills Burn In</div>
+      
+      <div class="status" id="saveStatus">Disconnected</div>
+      <button id="btnHelp" class="helpBtn" type="button">Help</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel left">
+        <h2>Metadata Burn-in Builder</h2>
+
+        <div class="hint">
+          Click a metadata item to add it to the layout.
+        </div>
+
+        <input id="tokenSearch" type="search" placeholder="Filter tokens…" class="tokenSearch" />
+        <div id="metadataTokenList" class="tokenList"></div>
+
+      </section>
+
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0;">
+
+        <section class="panel">
+          <h2>Still Naming</h2>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input type="text" id="stillNamingTemplate" placeholder="e.g. %Scene_%Shot-%Take_%Camera_#" style="flex:1;min-width:0;" />
+            </div>
+            <div id="stillNamingTokens" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+          </div>
+        </section>
+
+        <section class="panel middle" style="flex:1;min-height:0;">
+          <h2>Preview</h2>
+        <div class="row" style="display:flex;align-items:center;gap:8px;">
+          <input id="imgPicker" type="file" accept="image/*" style="flex-shrink:0;" />
+          <span id="imgFileName" style="font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        </div>
+        <div class="previewWrap">
+          <canvas id="previewCanvas" width="1280" height="720"></canvas>
+        </div>
+        <div class="sep"></div>
+
+        <div class="row ratioControls">
+          <div class="inlineField">
+            <label>Ratio</label>
+            <div id="ratioSelectWrap">
+              <select id="imageRatio">
+                <option value="none">None</option>
+                <option value="1.33">1.33</option>
+                <option value="1.66">1.66</option>
+                <option value="1.77" selected>1.77</option>
+                <option value="1.85">1.85</option>
+                <option value="2.00">2.00</option>
+                <option value="2.35">2.35</option>
+                <option value="2.39">2.39</option>
+                <option value="2.40">2.40</option>
+                <option value="custom">Custom…</option>
+              </select>
+              <input type="number" id="imageRatioCustom" min="0.1" max="20" step="0.01" placeholder="1.50" style="display:none;flex:1;min-width:0;" />
+            </div>
+          </div>
+
+          <div class="inlineField">
+            <label>Mode</label>
+            <select id="imageRatioMode">
+              <option value="crop" selected>Crop</option>
+              <option value="fit">Fit</option>
+            </select>
+          </div>
+
+          <div class="inlineField">
+            <label>Mask</label>
+            <select id="maskStyle">
+              <option value="bars" selected>Bars</option>
+              <option value="lines">Frame</option>
+              <option value="bars_lines">Bars + Frame</option>
+            </select>
+          </div>
+
+          <div class="inlineField sliderInline">
+            <label>Opacity</label>
+            <input id="maskOpacity" type="range" min="0" max="1" step="0.01" value="1" />
+            <span id="maskOpacityVal" class="liveVal">1.00</span>
+          </div>
+
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="row ratioControls" id="openGateCropRow">
+
+          <!-- 1. Frameline toggle + safety -->
+          <div class="inlineField">
+            <label id="lblFramelineSafety" style="cursor:default;" title="Double-clic pour remettre à 100%">Frameline</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="ogcFramelineToggle" style="width:14px;height:14px;flex-shrink:0;" />
+              <input type="number" id="openGateSafety" min="50" max="200" value="100" step="0.5" style="width:68px;flex-shrink:0;" />
+              <span style="font-size:11px;color:#999">%</span>
+            </div>
+          </div>
+
+          <!-- 2. Orientation H/V -->
+          <div class="inlineField">
+            <label>Orientation</label>
+            <select id="framelineOrientation">
+              <option value="horizontal_16_9" selected>H 16:9</option>
+              <option value="vertical_9_16">V 9:16</option>
+              <option value="native_ratio">Native Ratio</option>
+            </select>
+          </div>
+
+          <!-- 3. Native Format (+ custom W/H shown inline) -->
+          <div class="inlineField">
+            <label>Native Format</label>
+            <div style="display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:nowrap;">
+              <select id="openGateCropPreset" style="flex:1;min-width:0;">
+                <option value="arri_alexa35">Arri Alexa 35 4.6K OG</option>
+                <option value="arri_alexalf">Arri Alexa LF 4.5K OG</option>
+                <option value="sony_venice1">Sony Venice 1 6K 3:2</option>
+                <option value="sony_venice2">Sony Venice 2 8.6K 3:2</option>
+                <option value="custom">Custom</option>
+              </select>
+              <div id="openGateCropCustomWrap" style="display:none;flex-direction:row;align-items:center;gap:4px;">
+                <input type="number" id="openGateCropW" min="1" max="20000" value="3" style="width:72px;" />
+                <span style="font-size:11px;color:#999">×</span>
+                <input type="number" id="openGateCropH" min="1" max="20000" value="2" style="width:72px;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Offset X/Y -->
+          <div class="inlineField">
+            <label>Offset</label>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span id="lblOffsetX" style="font-size:11px;color:#999;cursor:default;" title="Double-clic pour remettre à 0">X</span>
+              <input type="number" id="framelineOffsetX" min="-50" max="50" value="0" step="0.5" style="width:62px;" />
+              <span id="lblOffsetY" style="font-size:11px;color:#999;cursor:default;" title="Double-clic pour remettre à 0">Y</span>
+              <input type="number" id="framelineOffsetY" min="-50" max="50" value="0" step="0.5" style="width:62px;" />
+              <span style="font-size:11px;color:#999">%</span>
+            </div>
+          </div>
+
+        </div>
+
+
+      </section>
+
+      </div><!-- end middle column wrapper -->
+
+      <section class="panel right">
+        <div class="panelHeaderRow">
+          <h2>Token Editor</h2>
+          <button id="btnResetLayout" type="button" class="resetBtn">Reset</button>
+        </div>
+        <div class="row" style="margin-bottom:8px">
+          <button id="btnPresets" type="button" class="presetsBtn">Resolve Presets</button>
+        </div>
+        <div class="sep"></div>
+        <h2>Burn-in Layout</h2>
+        <div class="hint">
+          Click to select. Right-click to delete.
+        </div>
+        <div id="burninLayoutList"></div>
+
+        <div id="tokenControls" class="tokenControls hidden">
+        <div class="sep"></div>
+        <div id="customTemplateBlock">
+          <h3>Custom Template</h3>
+          <label class="row">
+            <span>Template</span>
+            <input id="metaTemplateCustom" type="text" placeholder="%Scene / %Shot - %Take %Good_Take" />
+          </label>
+          <div class="sep"></div>
+        </div>
+
+        <h3>Position & Size</h3>
+
+        <label class="row sliderRow">
+          <span>Position X</span>
+          <input id="metaPosX" type="range" min="0" max="100" step="0.1" value="50" />
+          <input id="metaPosXVal" class="liveVal liveValInput" type="number" min="0" max="100" step="0.1" value="50" />
+        </label>
+
+        <label class="row sliderRow">
+          <span>Position Y</span>
+          <input id="metaPosY" type="range" min="0" max="100" step="0.1" value="50" />
+          <input id="metaPosYVal" class="liveVal liveValInput" type="number" min="0" max="100" step="0.1" value="50" />
+        </label>
+
+        <label class="row">
+          <span>Align</span>
+          <select id="metaAlign">
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+
+        <label class="row">
+          <span>Font Size (pt)</span>
+          <input id="metaFontSize" type="number" min="1" max="300" step="0.5" value="24" />
+        </label>
+
+        <label class="row">
+          <span>Text Color</span>
+          <input id="metaColor" type="color" value="#ffffff" />
+        </label>
+
+        <label class="row sliderRow">
+          <span>Opacity</span>
+          <input id="metaOpacity" type="range" min="0" max="1" step="0.01" value="0.50" />
+          <span id="metaOpacityVal" class="liveVal">0.50</span>
+        </label>
+
+        <label class="row sliderRow">
+          <span>BG Opacity</span>
+          <input id="metaBgOpacity" type="range" min="0" max="1" step="0.01" value="0" />
+          <span id="metaBgOpacityVal" class="liveVal">0.00</span>
+        </label>
+
+        <label class="row">
+          <span>Font</span>
+          <select id="metaFontFamily"></select>
+        </label>
+
+        <label class="row">
+          <span>Load Font</span>
+          <input id="fontFilePicker" type="file" accept=".ttf,.otf,.ttc" />
+        </label>
+
+        <label class="row">
+          <span>Weight</span>
+          <label><input id="metaBold" type="checkbox" /> Bold</label>
+        </label>
+
+        <div class="row actions">
+          <button id="btnReload" type="button">Reload JSON</button>
+        </div>
+        </div>
+
+        <div class="sep"></div>
+        <h3>Export to Resolve</h3>
+        <label class="row">
+          <span>Preset name</span>
+          <input id="exportPresetName" type="text" placeholder="My Preset" value="My Preset" />
+        </label>
+        <div class="row actions">
+          <button id="btnSendToResolve" type="button" class="sendBtn">Send to Resolve</button>
+          <button id="btnExportXml" type="button">Export XML</button>
+        </div>
+
+
+      </section>
+    </main>
+
+  <!-- Presets Overlay -->
+  <div id="presetsOverlay" class="helpOverlay hidden">
+    <div class="helpModal presetsModal">
+      <button id="btnClosePresets" class="closeHelp">✕</button>
+      <h2>Resolve Slate Presets</h2>
+      <div id="presetsStatus" class="presetsStatus"></div>
+      <div id="presetsList"></div>
+    </div>
+  </div>
+
+  <!-- Help Overlay -->
+  <div id="helpOverlay" class="helpOverlay hidden">
+    <div class="helpModal">
+      <button id="btnCloseHelp" class="closeHelp">✕</button>
+      <h2>User Guide – Burn-in Builder</h2>
+
+      <h3>1. Add a Burn-in Token</h3>
+      <p>
+        Click a metadata token in the left column to add it to the burn-in layout.
+        Favorites are shown first. Click <strong>Show more</strong> to access the full token library.
+        Use the search field to filter by name.
+      </p>
+      <p>
+        Click <strong>Custom</strong> to create a free-form text element using any combination of tokens.
+      </p>
+
+      <h3>2. Selection, Movement & Deletion</h3>
+      <ul>
+        <li>Click an element on the canvas to select it and show its properties.</li>
+        <li>Drag it on the canvas to reposition.</li>
+        <li>Use Position X / Y sliders for precise placement (0–100%).</li>
+        <li>Arrow keys move the selected token by <strong>0.1%</strong> — hold <strong>Shift</strong> for 1% steps.</li>
+        <li><strong>Right-click</strong> an element in the layout list to delete it.</li>
+        <li>Click <strong>Reset</strong> to remove all elements at once.</li>
+      </ul>
+
+      <h3>3. Custom Template</h3>
+      <p>
+        Use the Template field to build a composite line from multiple tokens:<br/>
+        <code>%Scene / %Shot - %Take  %Camera_#</code>
+      </p>
+      <p>
+        Any <strong>%Key</strong> is replaced by its live metadata value.
+        Combine tokens with any separator text you like.
+      </p>
+
+      <h3>4. Appearance</h3>
+      <ul>
+        <li><strong>Font Size</strong> in points (pt) — scales with the 1080-line reference.</li>
+        <li><strong>Text Color</strong> — pick any hex color.</li>
+        <li><strong>Opacity</strong> — text transparency (0 = invisible, 1 = opaque).</li>
+        <li><strong>BG Opacity</strong> — black background box behind the text (0 = no box).</li>
+        <li><strong>Font</strong> — choose from system fonts or load a TTF/OTF file.</li>
+        <li><strong>Bold</strong> — toggle bold weight.</li>
+        <li><strong>Align</strong> — Left / Center / Right relative to the anchor point.</li>
+      </ul>
+
+      <h3>5. Exporting to Resolve</h3>
+      <ul>
+        <li><strong>Send to Resolve</strong> — writes the preset directly into Resolve's SlatePresetList.xml. Reload Resolve's burn-in dialog to see it.</li>
+        <li><strong>Export XML</strong> — downloads a <code>.xml</code> file you can import manually via Resolve's burn-in preset menu.</li>
+        <li>Enter a <strong>Preset name</strong> before exporting. If a preset with the same name already exists it will be replaced.</li>
+        <li>All Custom Text slots are written to the preset. Resolve&nbsp;21+ supports more than 3 — versions prior to 21 only render the first 3 (Custom Text1/2/3).</li>
+      </ul>
+
+      <h3>6. Resolve Presets</h3>
+      <p>
+        Click <strong>Resolve Presets</strong> to browse all presets currently saved in Resolve.
+        Expand a preset to see its elements, then click <strong>Import into layout</strong> to load it.
+      </p>
+
+      <h3>7. Ratio</h3>
+      <p>
+        The <strong>Ratio</strong> selector controls the delivery format bars overlaid on the canvas.
+      </p>
+      <ul>
+        <li><strong>None</strong> — no ratio applied, no bars drawn. Export delivers the full frame.</li>
+        <li><strong>1.33 … 2.40</strong> — standard delivery ratios.</li>
+        <li><strong>Custom…</strong> — the dropdown shrinks to 2/3 width and a numeric input appears in the remaining 1/3. Type any ratio (e.g. <code>1.5</code>). The preview updates in real time.</li>
+      </ul>
+
+      <h3>8. Framelines Crop &amp; Frameline Overlay</h3>
+      <p>
+        The <strong>Frameline</strong> checkbox overlays a crop guide on the canvas.
+        When <strong>Framelines Crop</strong> is enabled in the Resolve plugin, the still is cropped to the frameline before burn-ins are applied.
+      </p>
+      <ul>
+        <li><strong>H 16:9</strong> — extracts the 16:9 delivery area from the native sensor frame and upscales to 1920×1080.</li>
+        <li><strong>V 9:16</strong> — crops the centre 9:16 area from the 16:9 still (sides trimmed, no upscale). Burn-ins fill the full cropped frame.</li>
+        <li><strong>Native Ratio</strong> — crops to the camera's native sensor aspect ratio and resizes to a native-ratio HD frame (e.g. Sony Venice 1 6K 3:2 → 1620×1080). Delivery bars and burn-ins are then applied on top.</li>
+        <li><strong>Safety %</strong> — inset applied to the crop. Values &lt;100% zoom in, &gt;100% zoom out (frameline can extend beyond the canvas edge).</li>
+        <li><strong>Offset X / Y</strong> — shifts the frameline relative to the image centre. Double-click <strong>X</strong> or <strong>Y</strong> to reset to 0. Double-click <strong>Frameline</strong> to reset safety to 100%.</li>
+      </ul>
+      <p>
+        Outside the active frameline the canvas is dimmed. Frameline colour: orange (H 16:9), blue (V 9:16), green (Native Ratio).
+      </p>
+
+      <h3>9. Keyboard Shortcuts</h3>
+      <ul>
+        <li><strong>Cmd/Ctrl + S</strong> → Save JSON.</li>
+        <li><strong>Cmd/Ctrl + Z</strong> → Undo last action.</li>
+        <li><strong>Cmd/Ctrl + Y</strong> → Redo.</li>
+        <li><strong>Delete / Backspace</strong> → Delete the selected token.</li>
+        <li><strong>← → ↑ ↓</strong> → Move the selected token by 0.1%.</li>
+        <li><strong>Shift + ← → ↑ ↓</strong> → Move the selected token by 1%.</li>
+        <li><strong>Escape</strong> → Close any open overlay.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <style>
+    .liveVal{
+      display:inline-block;
+      min-width:48px;
+      font-size:12px;
+      color:#000;
+      margin-left:8px;
+      text-align:right;
+      font-variant-numeric: tabular-nums;
+    }
+    .liveValInput{
+      width:54px;
+      background:#111;
+      color:#ccc;
+      border:1px solid #333;
+      border-radius:3px;
+      padding:2px 4px;
+      text-align:right;
+      font-size:12px;
+      -moz-appearance:textfield;
+    }
+    .liveValInput:focus{
+      outline:none;
+      border-color:#006D78;
+    }
+    .liveValInput::-webkit-outer-spin-button,
+    .liveValInput::-webkit-inner-spin-button{
+      -webkit-appearance:none;
+      margin:0;
+    }
+    .sliderRow{
+      display:grid;
+      grid-template-columns:120px 1fr 60px;
+      align-items:center;
+      gap:10px;
+    }
+
+    .sliderRow input[type="range"]{
+      width:100%;
+    }
+
+    .liveVal{
+      text-align:right;
+      font-variant-numeric: tabular-nums;
+    }
+    .helpBtn{
+      margin-left:16px;
+      background:#000;
+      color:#fff;
+      border:1px solid #3e475a;
+      padding:6px 12px;
+      cursor:pointer;
+    }
+
+    .helpOverlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.8);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index:9999;
+    }
+
+    .helpOverlay.hidden{
+      display:none;
+    }
+
+    .helpModal{
+      position:relative;
+      background:#2e2e2e;
+      color:#aaa;
+      width:800px;
+      max-width:90%;
+      max-height:85vh;
+      overflow-y:auto;
+      padding:32px 36px 36px;
+      border-radius:10px;
+      box-shadow:0 8px 40px rgba(0,0,0,0.6);
+    }
+
+    .helpModal h2{
+      margin-top:0;
+    }
+
+    .helpModal h3{
+      margin-top:24px;
+      color:#bfbfbf;
+    }
+
+    .helpModal code{
+      background:#1c1c1c;
+      color:#fff;
+      border-radius:4px;
+    }
+
+    .closeHelp{
+      position:absolute;
+      top:20px;
+      right:30px;
+      background:none;
+      border:none;
+      color:#fff;
+      font-size:18px;
+      cursor:pointer;
+    }
+    #imageRatioMode,
+    #maskStyle {
+      width: 100%;
+      padding: 6px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #444;
+    }
+    .ratioControls{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:20px;
+      align-items:stretch;
+    }
+
+    .inlineField{
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+      gap:6px;
+      height:100%;
+    }
+
+    .sliderInline input[type="range"]{
+      width:100%;
+    }
+    /* Fixed-width inputs inside the frameline row */
+    #openGateSafety   { width:68px !important; }
+    #framelineOffsetX,
+    #framelineOffsetY { width:62px !important; }
+    .tokenControls.hidden{
+      display:none;
+    }
+
+    /* ── Token search filter ── */
+    .tokenSearch {
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: #0a0a0a;
+      color: #ddd;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 12px;
+      outline: none;
+    }
+    .tokenSearch:focus {
+      border-color: #006D78;
+    }
+
+    /* ---- Presets modal ---- */
+    .presetsModal {
+      width: 860px;
+    }
+    .presetsStatus {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 12px;
+    }
+    .presetBlock {
+      margin-bottom: 10px;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .presetHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #1e1e1e;
+      cursor: pointer;
+      user-select: none;
+    }
+    .presetHeader:hover {
+      background: #262626;
+    }
+    .presetName {
+      font-weight: bold;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+    .presetHeaderRight {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .presetCount {
+      font-size: 11px;
+      color: #666;
+    }
+    .presetToggle {
+      font-size: 12px;
+      color: #888;
+    }
+    .presetBody {
+      display: none;
+      padding: 4px 14px 12px;
+      background: #141414;
+    }
+    .presetBody.open {
+      display: block;
+    }
+    .presetElem {
+      display: grid;
+      grid-template-columns: 110px 1fr 120px 140px;
+      gap: 10px;
+      align-items: start;
+      padding: 8px 0;
+      border-bottom: 1px solid #252525;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .presetElem:last-child {
+      border-bottom: none;
+    }
+    .presetElemType {
+      color: #006D78;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .presetElemText {
+      color: #ddd;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .presetElemText.auto {
+      color: #555;
+      font-style: italic;
+    }
+    .presetElemFont {
+      font-size: 11px;
+      color: #777;
+      white-space: nowrap;
+    }
+    .presetElemPos {
+      font-size: 11px;
+      color: #666;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .btnImportPreset {
+      margin-top: 8px;
+      background: #006D78;
+      color: #fff;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btnImportPreset:hover {
+      background: #008899;
+    }
+    .panelHeaderRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0;
+    }
+    .panelHeaderRow h2 {
+      margin: 0;
+    }
+    .resetBtn {
+      background: #2a0a0a;
+      color: #cc4444;
+      border: 1px solid #552222;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      border-radius: 3px;
+    }
+    .resetBtn:hover {
+      background: #400f0f;
+    }
+    .presetsBtn {
+      width: 100%;
+      background: #0a1a1a;
+      color: #006D78;
+      border: 1px solid #006D78;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      border-radius: 3px;
+    }
+    .presetsBtn:hover {
+      background: #0d2222;
+    }
+    .sendBtn {
+      background: #006D78;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    .sendBtn:hover {
+      background: #008899;
+    }
+    .tokenFavorites {
+      margin-bottom: 4px;
+    }
+    .tokenMore {
+      margin-top: 4px;
+    }
+    .showMoreBtn {
+      width: 100%;
+      background: none;
+      border: 1px dashed #333;
+      color: #666;
+      padding: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      border-radius: 3px;
+      margin-top: 4px;
+    }
+    .showMoreBtn:hover {
+      color: #999;
+      border-color: #555;
+    }
+  .footer{
+    text-align:center;
+    padding:12px 0 8px;
+    font-size:11px;
+    color:#444;
+  }
+  .footer a{
+    color:#555;
+    text-decoration:none;
+  }
+  .footer a:hover{
+    color:#888;
+  }
+  </style>
+
+  <footer class="footer">
+    Powered by <a href="https://be4post.com" target="_blank" rel="noopener">Be4Post</a>
+  </footer>
+
+  </div>
+</body>
+</html>

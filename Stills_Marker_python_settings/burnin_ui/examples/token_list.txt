@@ -1,0 +1,285 @@
+%{File Name}
+%{Clip Directory}
+%{Video Codec}
+%{Start TC}
+%{End TC}
+%{Duration TC}
+%{Start Frame}
+%{End Frame}
+%{Frames}
+%{Shot Frame Rate}
+%{Resolution}
+%{Resolution}
+%{Data Level}
+%{Audio Channels}
+%{Date Modified}
+%{KeyKode}
+%{Description}
+%{Comments}
+%{Scene}
+%{Shot}
+%{Angle}
+%{Take}
+%{Move}
+%{Keywords}
+%{Good Take}
+%{Shoot Day}
+%{Date Recorded}
+%{Cam #}
+%{Roll Card #}
+%{Reel Number}
+%{Clip #}
+%{Program Name}
+%{Episode #}
+%{Episode Name}
+%{Shot During Ep}
+%{Location}
+%{Unit Name}
+%{Setup}
+%{Cam Type}
+%{Cam Serial #}
+%{Cam ID}
+%{Cam Notes}
+%{Cam Format}
+%{Media Type}
+%{Cam FPS}
+%{Shutter Speed}
+%{ISO}
+%{White Point}
+%{Cam TC Type}
+%{Sensor}
+%{Cam Firmware}
+%{Mon Color Space}
+%{Monitor LUT}
+%{LUT Used}
+%{Lens Type}
+%{Lens #}
+%{Lens Notes}
+%{Cam Aperture}
+%{Focal Point (mm)}
+%{Distance}
+%{Filter}
+%{Filter}
+%{PAR Notes}
+%{Asp Ratio Notes}
+%{Gamma Notes}
+%{Color Space Notes}
+%{RAW}
+%{H-Flip}
+%{V-Flip}
+%{LUT Used On Set}
+%{LUT 1}
+%{LUT 2}
+%{LUT 3}
+%{Lab Roll #}
+%{Colorist Notes}
+%{CDL SOP}
+%{CDL SAT}
+%{S3D Shot}
+%{S3D Eye}
+%{S3D Notes}
+%{IA}
+%{FG}
+%{CV}
+%{BG}
+%{Convergence Adj}
+%{3D Rig Type}
+%{3D Rig ID #}
+%{Rig Inverted}
+%{VFX Shot #}
+%{VFX Markers}
+%{VFX Notes}
+%{Framing Chart}
+%{Color Chart}
+%{Grey Chart}
+%{Lens Chart}
+%{VFX Grey Ball}
+%{VFX Mirror Ball}
+%{Audio Recorder}
+%{Deck Serial #}
+%{Deck Firmware}
+%{Audio Notes}
+%{Embedded Audio}
+%{Audio File Type}
+%{Audio Media}
+%{Sound Roll #}
+%{Audio TC Type}
+%{Audio Start TC}
+%{Audio End TC}
+%{Audio Dur TC}
+%{Sample Rate (KHz)}
+%{Tone}
+%{FSD}
+%{Audio FPS}
+%{Bit Rate}
+%{Track 1}
+%{Track 2}
+%{Track 3}
+%{Track 4}
+%{Track 5}
+%{Track 6}
+%{Track 7}
+%{Track 8}
+%{Aux 1}
+%{Aux 2}
+%{Start Dialog TC}
+%{End Dialog TC}
+%{Dialog Duration}
+%{Dialog Starts As}
+%{Dialog Notes}
+%{Production Name}
+%{Series #}
+%{Genre}
+%{Production Co}
+%{Producer}
+%{Asst Producer}
+%{Line Producer}
+%{Unit Manager}
+%{Post Producer}
+%{Production Asst}
+%{Editor}
+%{Editing Asst}
+%{Data Wrangler}
+%{Colorist}
+%{Colorist Asst}
+%{Director}
+%{Asst Director}
+%{Script Suprvisr}
+%{Continuity}
+%{DOP}
+%{Cam Operator}
+%{Cam Asst}
+%{Focus Puller}
+%{Key Grip}
+%{Key Grip}
+%{Sound Mixer}
+%{Digital Tech}
+%{Dailies Colorist}
+%{Crew Comments}
+%{2nd Dir}
+%{2nd Dir Asst}
+%{2nd Continuity}
+%{2nd DOP}
+%{2nd Asst}
+%{2nd DIT}
+%{DOP Reviewed}
+%{Director Reviewed}
+%{Focus Reviewed}
+%{VFX Svsr Reviewed}
+%{Colorist Reviewed}
+%{2nd DOP Reviewed}
+%{2nd Dir Reviewed}
+%{Sound Reviewed}
+%{Continuity Reviewed}
+%{Wardrobe Reviewed}
+%{Send to Studio}
+%{Send to}
+%{Reviewers Notes}
+%{Reel Name}
+%{File Path}
+%{Usage}
+%{IDT}
+%{Input LUT}
+%{Slate TC}
+%{Input Color Space}
+%{Input Sizing Preset}
+%{Audio Sample Rate}
+%{S3D Sync}
+%{Audio Offset}
+%{Graded}
+%{Modified}
+%{Unrendered}
+%{Group}
+%{Tracked}
+%{Noise Reduction}
+%{Different Frame Rate}
+%{Input Sizing}
+%{Matte Nodes}
+%{Associated Mattes}
+%{Collaborative Update}
+%{Clip Type}
+%{Audio Bit Depth}
+%{Has Keyframes}
+%{Drop Frame}
+%{In}
+%{Out}
+%{Subclip}
+%{Clip Name}
+%{White Balance Tint}
+%{Time-lapse Interval}
+%{Safe Area}
+%{Day / Night}
+%{Environment}
+%{Shot Type}
+%{Format}
+%{ND Filter}
+%{Marker Name}
+%{Marker Notes}
+%{Shared Nodes}
+%{Fusion Composition}
+%{Compression Ratio}
+%{Codec Bitrate}
+%{Sensor Area Captured}
+%{Camera Manufacturer}
+%{Shutter Type}
+%{Camera Aperture Type}
+%{Marker Keywords}
+%{Edit Sizing}
+%{People}
+%{Track 9}
+%{Track 10}
+%{Track 11}
+%{Track 12}
+%{Track 13}
+%{Track 14}
+%{Track 15}
+%{Track 16}
+%{Track 17}
+%{Track 18}
+%{Track 19}
+%{Track 20}
+%{Track 21}
+%{Track 22}
+%{Track 23}
+%{Track 24}
+%{Camera Position}
+%{Camera Pan Angle}
+%{Camera Tilt Angle}
+%{Camera Roll Angle}
+%{Timeline}
+%{Magic Mask}
+%{Category}
+%{Subcategory}
+%{HDR Graded}
+%{Proxy Clip}
+%{Shutter Angle}
+%{EDL Tape Number}
+%{Render Resolution}
+%{EDL Event Number}
+%{Version}
+%{Eye}
+%{Timeline Index}
+%{Color Thumbnail Index}
+%{Source Name}
+%{EDL Clip Name}
+%{Timeline Name}
+%{Project Name}
+%{Track Number}
+%{Track Name}
+%{Synced Audio File Name}
+%{Record TC}
+%{Source TC}
+%{Synced Audio TC}
+%{Date}
+%{Date ISO}
+%{Date US}
+%{Date Year}
+%{Date Month}
+%{Date Day}
+%{Time 24hr}
+%{Time 12hr}
+%{Time ISO}
+%{Time Hour 12hr}
+%{Time Hour 24hr}
+%{Time Minutes}
+%{Time Seconds}
