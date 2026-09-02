@@ -2343,15 +2343,6 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
-                                        ui.CheckBox(
-                                            {
-                                                "Weight": 0,
-                                                "ID": tag_srgb_check_boxID,
-                                                "Text": "Tag sRGB (Rec.709 match)",
-                                                "Checked": settings.get("tag_srgb", False),
-                                                "Events": {"Toggled": True},
-                                            }
-                                        ),
                                         ui.HGap(0),
                                         ui.ComboBox(
                                             {
@@ -2377,6 +2368,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                         "ID": burnin_check_boxID,
                                         "Text": "Burnins",
                                         "Checked": settings.get("burnin", False),
+                                        "Events": {"Toggled": True},
+                                    }
+                                ),
+                                ui.CheckBox(
+                                    {
+                                        "Weight": 0,
+                                        "ID": tag_srgb_check_boxID,
+                                        "Text": "Tag sRGB (Rec.709 match)",
+                                        "Checked": settings.get("tag_srgb", False),
                                         "Events": {"Toggled": True},
                                     }
                                 ),
