@@ -56,13 +56,19 @@ import re
 from datetime import datetime
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageCms
 
     print("Pillow is already installed.")
 except ImportError:
     print("Pillow not found. Installing...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "Pillow"])
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageCms
+
+# ImageCms.INTENT_PERCEPTUAL was removed in newer Pillow in favor of the Intent enum.
+try:
+    _ICC_INTENT_PERCEPTUAL = ImageCms.Intent.PERCEPTUAL
+except AttributeError:
+    _ICC_INTENT_PERCEPTUAL = ImageCms.INTENT_PERCEPTUAL
 
 
 class SMPTE(object):
@@ -441,6 +447,58 @@ def fit_image_into_black_canvas(input_path, canvas_width=1920, canvas_height=108
 
     except Exception as e:
         print(f"Could not fit image into black canvas: {e}")
+
+    return input_path
+
+
+_ICC_PROFILE_SUBFOLDER = "icc"
+_ICC_SRC_PROFILE_FILE = "ITU-RBT709ReferenceDisplay.icc"
+_ICC_DST_PROFILE_FILE = "sRGB_v4_ICC_preference_displayclass.icc"
+
+
+def _icc_profile_paths(setting_sub_folder_name="Stills_Marker_python_settings"):
+    script_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+    icc_folder = os.path.join(script_path, setting_sub_folder_name, _ICC_PROFILE_SUBFOLDER)
+    return (
+        os.path.join(icc_folder, _ICC_SRC_PROFILE_FILE),
+        os.path.join(icc_folder, _ICC_DST_PROFILE_FILE),
+    )
+
+
+def apply_srgb_icc_tag(input_path):
+    """
+    Converts an untagged Rec.709 still (JPEG has no embedded color tag on export)
+    to sRGB v4 (perceptual intent) and embeds the destination ICC profile, so
+    color-managed viewers (Preview, Photos, browsers, iPad) render it consistently
+    with a calibrated Rec.709 reference display (e.g. SmallHD monitor).
+    Applied last, after crop/burnin/canvas/resize, so the tag matches final pixels.
+    """
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext not in (".jpg", ".jpeg"):
+        return input_path
+
+    src_profile_path, dst_profile_path = _icc_profile_paths()
+    if not (os.path.exists(src_profile_path) and os.path.exists(dst_profile_path)):
+        print(f"[icc] Profile(s) missing in {os.path.dirname(src_profile_path)} — skipping sRGB tag.")
+        return input_path
+
+    try:
+        with Image.open(input_path) as img:
+            src_im = img.convert("RGB")
+            src_profile = ImageCms.getOpenProfile(src_profile_path)
+            dst_profile = ImageCms.getOpenProfile(dst_profile_path)
+            converted = ImageCms.profileToProfile(
+                src_im, src_profile, dst_profile,
+                renderingIntent=_ICC_INTENT_PERCEPTUAL,
+                outputMode="RGB",
+            )
+
+        with open(dst_profile_path, "rb") as f:
+            dst_icc_bytes = f.read()
+
+        converted.save(input_path, quality=95, icc_profile=dst_icc_bytes)
+    except Exception as e:
+        print(f"[icc] Could not apply sRGB tag on {os.path.basename(input_path)}: {e}")
 
     return input_path
 
@@ -835,6 +893,7 @@ dict_settings = {
     "rename_scene_shot_separator": "/",
     "burnin": False,
     "fit_to_1920_canvas": False,
+    "tag_srgb": False,
     "open_destination_folder": False,
     "replace_stills": False,
     "skip_grab": False,
@@ -1915,6 +1974,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
     resize_check_boxID = "ResizeCheckBox"
     resize_line_editID = "ResizeLineEdit"
+    tag_srgb_check_boxID = "TagSrgbCheckBox"
 
     burnin_setting_boxID = "BurninSettings"
     burnin_check_boxID = "BurninCheckBox"
@@ -2283,6 +2343,15 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
                                                 "Events": {"Toggled": True},
                                             }
                                         ),
+                                        ui.CheckBox(
+                                            {
+                                                "Weight": 0,
+                                                "ID": tag_srgb_check_boxID,
+                                                "Text": "Tag sRGB (Rec.709 match)",
+                                                "Checked": settings.get("tag_srgb", False),
+                                                "Events": {"Toggled": True},
+                                            }
+                                        ),
                                         ui.HGap(0),
                                         ui.ComboBox(
                                             {
@@ -2425,6 +2494,9 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
 
         window_items[remove_drx_check_boxID].Enabled = export_on
 
+        # sRGB tag only makes sense on JPEG output
+        window_items[tag_srgb_check_boxID].Enabled = export_on and settings["format"] == "jpg"
+
         # Burnins, open gate crop and fixed output canvas are only useful when exporting files
         window_items[burnin_check_boxID].Enabled = export_on
         window_items[fit_canvas_check_boxID].Enabled = export_on
@@ -2541,6 +2613,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
         settings["rename_scene_shot_separator"] = window_items[rename_sep_line_editID].Text
 
         settings["remove_drx"] = window_items[remove_drx_check_boxID].Checked
+        settings["tag_srgb"] = window_items[tag_srgb_check_boxID].Checked
         settings["create_export_folder_timeline_name"] = window_items[create_timeline_folder_check_boxID].Checked
         settings["create_sub_folder"] = window_items[create_sub_folder_check_boxID].Checked
         settings["sub_folder_name"] = window_items[sub_folder_name_line_editID].Text
@@ -2589,6 +2662,7 @@ def create_window(marker_count_by_color, markers, still_album_name, timeline_set
     main_window.On[move_markers_to_clips_check_boxID].Toggled    = OnGenericToggled
     main_window.On[move_markers_to_timeline_check_boxID].Toggled = OnGenericToggled
     main_window.On[remove_drx_check_boxID].Toggled = OnGenericToggled
+    main_window.On[tag_srgb_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_timeline_folder_check_boxID].Toggled = OnGenericToggled
     main_window.On[create_sub_folder_check_boxID].Toggled = OnGenericToggled
     main_window.On[sub_folder_name_line_editID].TextChanged = OnGenericToggled
@@ -3174,6 +3248,11 @@ if grab_stills:
                     # Skipped when fit HD is active (fixed 1920x1080 output)
                     if _resize_on and not settings.get("fit_to_1920_canvas", False):
                         resize_image(img_path, _resize_pct, delete_original=True)
+
+                    # sRGB color tag — last pixel operation, so the embedded profile matches
+                    # the final image (crop/burnin/canvas/resize already applied)
+                    if settings.get("tag_srgb", False):
+                        apply_srgb_icc_tag(img_path)
 
                     # Still naming template rename (applied last, after all processing)
                     if _still_naming:
